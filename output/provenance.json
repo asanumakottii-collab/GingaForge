@@ -1,0 +1,125 @@
+{
+  "source_url": "https://galaxy.phy.cmich.edu/~axel/mwpan2/mwpan2_RGB_3600.fits",
+  "source_author": "Axel Mellinger",
+  "source_paper_doi": "10.1086/648480",
+  "license_information": "https://milkywaysky.com/licenses.html",
+  "license_clearance": "Not obtained by this workflow; check with the author for educational screenings.",
+  "source_sha256": "6be5f879ffdd336d5ce0bf7c77d2fc6edef74e64628b9287757f4d06e4ed35ba",
+  "source_plane_zero_based": 1,
+  "source_sampling_deg": 0.1,
+  "source_intensity_units": "Original FITS values; no BUNIT in source header",
+  "projection": "Centered OTL cylinder: x=p*tan(b), y=-p*(l-center); radians; y down on page",
+  "sampling": "Bilinear interpolation of intensity at pixel centers; no Jacobian intensity factor",
+  "printed_field_width_mm": 36.39702342662024,
+  "printed_field_height_mm": 52.35987755982988,
+  "config": {
+    "source-fits": "source/mwpan2_RGB_3600.fits",
+    "output-directory": "output",
+    "plate-distance-mm": "50",
+    "projector-horizontal-mm": "0",
+    "projector-vertical-mm": "0",
+    "latitude-limit-deg": "20",
+    "print-scale": "1",
+    "raster-dpi": "1200",
+    "tone-mode": "asinh",
+    "black-level": "0",
+    "white-level": "1500",
+    "asinh-softening": "0.05",
+    "exposure": "1",
+    "display-gamma": "1"
+  },
+  "regions": {
+    "N0": {
+      "longitude_deg": [
+        0.0,
+        60.0
+      ],
+      "latitude_deg": [
+        -20.0,
+        20.0
+      ],
+      "shape_rows_columns": [
+        2474,
+        1720
+      ],
+      "display_zero_fraction": 0.0,
+      "display_white_fraction": 0.007239006598860709,
+      "linear_percentiles_0_50_90_99_100": [
+        84.34876251220703,
+        241.04515838623047,
+        500.85358886718757,
+        1274.018110351561,
+        1082452.625
+      ]
+    },
+    "N1": {
+      "longitude_deg": [
+        60.0,
+        120.0
+      ],
+      "latitude_deg": [
+        -20.0,
+        20.0
+      ],
+      "shape_rows_columns": [
+        2474,
+        1720
+      ],
+      "display_zero_fraction": 0.0,
+      "display_white_fraction": 0.009435571807260627,
+      "linear_percentiles_0_50_90_99_100": [
+        74.75408935546875,
+        225.75518798828125,
+        429.9054992675782,
+        1428.6266760253889,
+        720226.5
+      ]
+    },
+    "S0": {
+      "longitude_deg": [
+        300.0,
+        360.0
+      ],
+      "latitude_deg": [
+        -20.0,
+        20.0
+      ],
+      "shape_rows_columns": [
+        2474,
+        1720
+      ],
+      "display_zero_fraction": 0.0,
+      "display_white_fraction": 0.009025728036697938,
+      "linear_percentiles_0_50_90_99_100": [
+        95.21456909179688,
+        315.3912811279297,
+        576.0125915527344,
+        1400.6599633789058,
+        1493053.0
+      ]
+    },
+    "S1": {
+      "longitude_deg": [
+        240.0,
+        300.0
+      ],
+      "latitude_deg": [
+        -20.0,
+        20.0
+      ],
+      "shape_rows_columns": [
+        2474,
+        1720
+      ],
+      "display_zero_fraction": 0.0,
+      "display_white_fraction": 0.009605948374725047,
+      "linear_percentiles_0_50_90_99_100": [
+        85.8037338256836,
+        243.38096618652344,
+        502.3462127685547,
+        1451.5446752929681,
+        2821507.0
+      ]
+    }
+  }
+}

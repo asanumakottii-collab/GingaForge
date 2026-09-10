@@ -1,0 +1,153 @@
+{
+  "algorithm": "G-band flux sum; equal circular holes on spaced lattice; serpentine error carry",
+  "settings": {
+    "min_diameter_mm": 0.02,
+    "min_web_mm": 0.02,
+    "cell_mm": 0.2,
+    "flux_gain": 0.05,
+    "seed": 0,
+    "scale": 1.0
+  },
+  "actual_cell_size_output_mm": 0.20000000002,
+  "hole_diameter_output_mm": 0.02,
+  "min_web_output_mm": 0.02,
+  "quantum_area_mm2": 0.0003141592653589793,
+  "outside_region_stars": 0,
+  "plates": [
+    {
+      "plate": "N0",
+      "source_stars": 32718768,
+      "cells": 47684,
+      "holes": 222850,
+      "requested_area_mm2": 70.70581576069534,
+      "achievable_area_mm2": 70.01042983517685,
+      "output_area_mm2": 70.01039228524854,
+      "capacity_loss_area_mm2": 0.6953859255184938,
+      "quantization_error_area_mm2": -3.754992830806714e-05,
+      "saturated_cells": 270,
+      "no_candidate_cells": 0
+    },
+    {
+      "plate": "N1",
+      "source_stars": 16864472,
+      "cells": 47684,
+      "holes": 189851,
+      "requested_area_mm2": 59.6454496194595,
+      "achievable_area_mm2": 59.64332289155394,
+      "output_area_mm2": 59.64345068766758,
+      "capacity_loss_area_mm2": 0.002126727905555015,
+      "quantization_error_area_mm2": 0.00012779611363811227,
+      "saturated_cells": 4,
+      "no_candidate_cells": 0
+    },
+    {
+      "plate": "S0",
+      "source_stars": 35197277,
+      "cells": 47684,
+      "holes": 269791,
+      "requested_area_mm2": 84.98776288252449,
+      "achievable_area_mm2": 84.75728712153318,
+      "output_area_mm2": 84.75734236046439,
+      "capacity_loss_area_mm2": 0.23047576099131106,
+      "quantization_error_area_mm2": 5.52389312105106e-05,
+      "saturated_cells": 135,
+      "no_candidate_cells": 0
+    },
+    {
+      "plate": "S1",
+      "source_stars": 19236953,
+      "cells": 47684,
+      "holes": 206362,
+      "requested_area_mm2": 64.94145871909934,
+      "achievable_area_mm2": 64.83041409529193,
+      "output_area_mm2": 64.83053431800968,
+      "capacity_loss_area_mm2": 0.11104462380741609,
+      "quantization_error_area_mm2": 0.00012022271775435911,
+      "saturated_cells": 67,
+      "no_candidate_cells": 0
+    }
+  ],
+  "limits": [
+    "光量→穴面積は均一照明・薄板を仮定。板厚、エッチング誤差、光源、ドームで要実測校正。",
+    "G帯の観測光量。V帯/暗所視への変換、減光補正、欠測星・散光星雲の補完はしない。",
+    "穴はセル内に再配置した光量標本で、個々の恒星位置ではない。",
+    "天球の取得ビンと原盤セルの両方で空間分解能が制限される。"
+  ],
+  "input": {
+    "rows": 959940,
+    "stars": 104017470,
+    "filtered_stars": 0,
+    "provenance": {
+      "complete": true,
+      "selection": {
+        "format_version": 1,
+        "catalogue": "gaiadr3.gaia_source",
+        "band": "G",
+        "bright_exclusive": 7.5,
+        "faint_inclusive": 17.0,
+        "reference_magnitude": 7.5,
+        "sky_bin_deg": 0.1,
+        "longitude_regions": [
+          [
+            0.0,
+            60.0
+          ],
+          [
+            60.0,
+            120.0
+          ],
+          [
+            300.0,
+            360.0
+          ],
+          [
+            240.0,
+            300.0
+          ]
+        ],
+        "latitude_limit": 20.0
+      },
+      "files": [
+        {
+          "name": "region-0.csv.gz",
+          "query": "SELECT FLOOR(l / 0.1) AS lon_bin, FLOOR((b + 90.0) / 0.1) AS lat_bin, COUNT(*) AS source_count,\nSUM(POWER(10.0, -0.4 * (phot_g_mean_mag - 7.5))) AS relative_flux\nFROM gaiadr3.gaia_source\nWHERE l >= 0 AND l < 60\nAND b >= -20 AND b <= 20\nAND phot_g_mean_mag > 7.5 AND phot_g_mean_mag <= 17\nGROUP BY lon_bin, lat_bin",
+          "job": "https://gea.esac.esa.int/tap-server/tap/async/ced25187-aa8c-11f1-b67b-bc97e148b76b-O",
+          "rows": 239988,
+          "stars": 32718768,
+          "sha256": "6382ad83c83e176071995c52f63d4d0885c43a3e94ebc704eceb07b9a2d177a0"
+        },
+        {
+          "name": "region-1.csv.gz",
+          "query": "SELECT FLOOR(l / 0.1) AS lon_bin, FLOOR((b + 90.0) / 0.1) AS lat_bin, COUNT(*) AS source_count,\nSUM(POWER(10.0, -0.4 * (phot_g_mean_mag - 7.5))) AS relative_flux\nFROM gaiadr3.gaia_source\nWHERE l >= 60 AND l < 120\nAND b >= -20 AND b <= 20\nAND phot_g_mean_mag > 7.5 AND phot_g_mean_mag <= 17\nGROUP BY lon_bin, lat_bin",
+          "job": "https://gea.esac.esa.int/tap-server/tap/async/f30067a0-aa8c-11f1-b67b-bc97e148b76b-O",
+          "rows": 240000,
+          "stars": 16864472,
+          "sha256": "6181c32e1f0d2a1fcc26e24fe155f7cdf518d8a47a6b5aa6e35c684d6754e442"
+        },
+        {
+          "name": "region-2.csv.gz",
+          "query": "SELECT FLOOR(l / 0.1) AS lon_bin, FLOOR((b + 90.0) / 0.1) AS lat_bin, COUNT(*) AS source_count,\nSUM(POWER(10.0, -0.4 * (phot_g_mean_mag - 7.5))) AS relative_flux\nFROM gaiadr3.gaia_source\nWHERE l >= 300 AND l < 360\nAND b >= -20 AND b <= 20\nAND phot_g_mean_mag > 7.5 AND phot_g_mean_mag <= 17\nGROUP BY lon_bin, lat_bin",
+          "job": "https://gea.esac.esa.int/tap-server/tap/async/15bff9b6-aa8d-11f1-b67b-bc97e148b76b-O",
+          "rows": 239956,
+          "stars": 35197277,
+          "sha256": "3a341a0a339ec6f39bd111d5a4825f1fb3e9eee75b9dd1a6baedc8aa1a1b733b"
+        },
+        {
+          "name": "region-3.csv.gz",
+          "query": "SELECT FLOOR(l / 0.1) AS lon_bin, FLOOR((b + 90.0) / 0.1) AS lat_bin, COUNT(*) AS source_count,\nSUM(POWER(10.0, -0.4 * (phot_g_mean_mag - 7.5))) AS relative_flux\nFROM gaiadr3.gaia_source\nWHERE l >= 240 AND l < 300\nAND b >= -20 AND b <= 20\nAND phot_g_mean_mag > 7.5 AND phot_g_mean_mag <= 17\nGROUP BY lon_bin, lat_bin",
+          "job": "https://gea.esac.esa.int/tap-server/tap/async/87361dcc-aaee-11f1-b67b-bc97e148b76b-O",
+          "rows": 239996,
+          "stars": 19236953,
+          "sha256": "e3b8676c54d89807c8e59f1def4f1a6341e280618a7276b7c934e47a4024eb84"
+        }
+      ]
+    }
+  },
+  "geometry": {
+    "radius": 0.1,
+    "sphere": 6500.0,
+    "projector_horizontal": 0.0,
+    "projector_vertical": 0.0,
+    "plate": 50.0
+  }
+}
