@@ -1,0 +1,8 @@
+Validation: PASS
+4 automated tests passed.
+Requested N0/N1/S0/S1 bounds and +/-20 deg checked.
+Pixel-center sampling, WCS orientation, and shared tone map checked.
+A4 page size, image dimensions, and region labels checked.
+Current OTL comparison: 36 sky positions; max absolute coordinate difference 3.907985046680551e-14 mm.
+Rendered and visually inspected both master PDF pages and the calibration page.
+Physical printing, film transmission, lens response, and screening license clearance are not validated.
