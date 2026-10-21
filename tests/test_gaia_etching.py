@@ -9,11 +9,11 @@ import xml.etree.ElementTree as ET
 from io import StringIO
 from unittest.mock import patch
 
-from gaia_catalog import (GaiaSettings, build_queries, iter_flux_samples,
+from gingaforge.gaia_catalog import (GaiaSettings, build_queries, iter_flux_samples,
                           _votable_to_csv, file_sha256)
-from galaxy_etching import EtchingBuilder, EtchingSettings
-from galaxy_transformer import GalaxyTransformer, main
-from models import SpherePosition
+from gingaforge.galaxy_etching import EtchingBuilder, EtchingSettings
+from gingaforge.gaia_etch import GalaxyTransformer, main
+from gingaforge.models import SpherePosition
 
 
 def position(lon, lat=0.):

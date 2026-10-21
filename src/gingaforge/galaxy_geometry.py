@@ -21,8 +21,8 @@
 """OHP・Gaia原盤で共有する担当領域と円筒投影。"""
 
 import math
-from mathvector import MathVector
-from models import PlatePosition, SpherePosition
+from .mathvector import MathVector
+from .models import PlatePosition, SpherePosition
 
 REGIONS = {"N0": (0., 60.), "N1": (60., 120.),
            "S0": (300., 360.), "S1": (240., 300.)}

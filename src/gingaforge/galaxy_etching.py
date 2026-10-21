@@ -12,8 +12,8 @@ from dataclasses import asdict, dataclass
 import math
 import random
 
-from gaia_catalog import positive_number
-from models import PlatePosition, PlateStar
+from .gaia_catalog import positive_number
+from .models import PlatePosition, PlateStar
 
 
 class _Holes(Sequence):

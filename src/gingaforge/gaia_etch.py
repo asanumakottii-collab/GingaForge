@@ -27,13 +27,13 @@ import os
 from pathlib import Path
 import sys
 
-from config import load_properties
-from gaia_catalog import positive_number
-from galaxy_geometry import GalaxyTransformer
-from plate_writer import (DEFAULT_OUTPUT_DIR, PlateWriterPDF, PlateWriterSVG,
+from .config import PROJECT_ROOT, load_properties
+from .gaia_catalog import positive_number
+from .galaxy_geometry import GalaxyTransformer
+from .plate_writer import (DEFAULT_OUTPUT_DIR, PlateWriterPDF, PlateWriterSVG,
                           PlateWriterType, categorized_output_dir)
 
-ROOT = Path(__file__).resolve().parent
+ROOT = PROJECT_ROOT
 
 
 def _init_galaxy_transformer(props):
@@ -65,9 +65,9 @@ def _init_plate_writer(props, writer_type, write_frames=True):
 
 
 def _process_gaia(props, config_directory, writer_type, fetch=False, query_only=False):
-    from gaia_catalog import (GaiaSettings, build_queries, download_gaia,
+    from .gaia_catalog import (GaiaSettings, build_queries, download_gaia,
                               iter_flux_samples)
-    from galaxy_etching import EtchingBuilder, EtchingSettings
+    from .galaxy_etching import EtchingBuilder, EtchingSettings
 
     gaia = GaiaSettings.from_properties(props, config_directory)
     etching = EtchingSettings.from_properties(props)

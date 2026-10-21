@@ -7,9 +7,9 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from galaxy_transformer import GalaxyTransformer, _init_plate_writer, main
-from models import SpherePosition
-from plate_writer import PlateWriterType
+from gingaforge.gaia_etch import GalaxyTransformer, _init_plate_writer, main
+from gingaforge.models import SpherePosition
+from gingaforge.plate_writer import PlateWriterType
 
 
 def _position(longitude, latitude=0.):

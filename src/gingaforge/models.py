@@ -22,7 +22,7 @@
 
 import math
 
-from mathvector import MathVector
+from .mathvector import MathVector
 
 
 # Hipparcos/ICRSから銀河座標への回転行列（各行は銀河座標軸）。
