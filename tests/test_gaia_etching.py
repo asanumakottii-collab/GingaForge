@@ -1,3 +1,4 @@
+from collections import Counter
 import csv
 import gzip
 import json
@@ -122,9 +123,56 @@ class EtchingTests(unittest.TestCase):
                            ("galaxy.etch.min-web-mm", "-1"),
                            ("galaxy.etch.flux-gain", "nan"),
                            ("scale", "inf"), ("galaxy.etch.seed", "1.2"),
-                           ("galaxy.etch.cell-size-mm", ".01")):
-            with self.subTest(key=key), self.assertRaises(ValueError):
+                           ("galaxy.etch.cell-size-mm", ".01"),
+                           ("galaxy.etch.milky-way.black-percentile", "-1"),
+                           ("galaxy.etch.milky-way.black-percentile", "95"),
+                           ("galaxy.etch.milky-way.anchor-percentile", "101"),
+                           ("galaxy.etch.milky-way.gamma", "0"),
+                           ("galaxy.etch.milky-way.smoothing-mm", "-1"),
+                           ("galaxy.etch.milky-way.smoothing-mm", "100")):
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 EtchingSettings.from_properties({key: value})
+
+    def milky_way_builder(self, **settings):
+        builder = EtchingBuilder(self.t, EtchingSettings(**settings), 69.25)
+        # 銀緯方向(x)に明るさが落ちる帯と、外側の明るい星1つ。
+        for ix in range(-20, 20):
+            for iy in range(-10, 10):
+                x = (ix + .5) * builder.cell
+                flux = .02 + .1 * math.exp(-(x / 1.5) ** 2) + (.4 if (ix, iy) == (-18, 0) else 0.)
+                builder.add_sample(self.t.inverse_transform_unit(x, (iy + .5) * builder.cell, 0, 0), flux)
+        return builder
+
+    def test_milky_way_enhancement_darkens_background_and_keeps_band(self):
+        linear_builder = self.milky_way_builder()
+        linear_holes, linear_report = linear_builder.build()
+        holes, report = self.milky_way_builder(milky_way=True).build()
+        column = lambda found: Counter(math.floor(h.p.xmm / linear_builder.cell) for h in found)
+        linear, enhanced = column(linear_holes), column(holes)
+        outside = [*range(-20, -14), *range(15, 20)]  # 明るい星の列 -18 を含む
+        self.assertGreater(sum(linear[ix] for ix in outside), 0)
+        self.assertEqual(0, sum(enhanced[ix] for ix in outside))
+        self.assertGreaterEqual(enhanced[-1] + enhanced[0], linear[-1] + linear[0])
+        info = report["milky_way"]
+        self.assertTrue(info["enabled"])
+        self.assertEqual(5, info["smoothing_window_cells"])
+        self.assertLess(info["black_level"], info["anchor_level"])
+        self.assertGreater(info["dark_cells"], 0)
+        plate = report["plates"][0]
+        self.assertAlmostEqual(linear_report["plates"][0]["requested_area_mm2"], plate["linear_area_mm2"])
+        self.assertLess(plate["requested_area_mm2"], plate["linear_area_mm2"])
+        self.assertFalse(linear_report["milky_way"]["enabled"])
+
+    def test_milky_way_enhancement_settings_and_uniform_input(self):
+        settings = EtchingSettings.from_properties({"galaxy.etch.milky-way": "yes",
+                                                    "galaxy.etch.milky-way.gamma": "2"})
+        self.assertTrue(settings.milky_way)
+        self.assertEqual(2., settings.milky_way_gamma)
+        self.assertFalse(EtchingSettings.from_properties({}).milky_way)
+        builder = EtchingBuilder(self.t, settings, 69.25)
+        builder.add_sample(position(30.01, .01), .2)
+        with self.assertRaises(ValueError):
+            builder.build()
 
 
 class GaiaInputTests(unittest.TestCase):

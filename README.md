@@ -30,6 +30,9 @@ python3 -m venv .venv
 # 別の設定ファイルを使用
 .venv/bin/gingaforge gaia-etch -f gaia-etch.properties
 
+# Gaia星表からOHPフィルム印刷用の原盤（天の川強調あり）を output/galaxy/ に生成
+.venv/bin/gingaforge gaia-etch -PDF -f gaia-ohp.properties
+
 # OHP保存画像・PDFと、Gaia入出力・投影・穴間隔・統合コマンドを検証
 .venv/bin/python -m unittest discover -v
 ```
@@ -41,6 +44,7 @@ python3 -m venv .venv
 |---|---|---|---|
 | `ohp` | `galaxyconfig.properties`（従来のまま） | `source/mwpan2_RGB_3600.fits` | `output/mellinger-ohp-plates.pdf`、PNG、校正PDF |
 | `gaia-etch` | `gaia-etch.properties`（OTLから移行） | `source/gaia/`、または個別星CSV/CSV.gz | `output_inverse/galaxy/gaia-etch-*.svg/pdf`、レポート |
+| `gaia-etch`（OHPフィルム） | `gaia-ohp.properties`（天の川強調あり） | `source/gaia/` | `output/galaxy/gaia-etch-*.svg/pdf`、レポート |
 
 OHPは `python -m gingaforge.ohp --config galaxyconfig.properties`、
 Gaiaは `python -m gingaforge.gaia_etch -f gaia-etch.properties` で個別に実行することもできます。
@@ -57,7 +61,8 @@ OHPの緑チャンネルとGaiaのG帯は異なる観測量のため、それぞ
 ```
 pyproject.toml             パッケージ定義（`gingaforge` コマンド）
 galaxyconfig.properties    OHP用設定
-gaia-etch.properties       Gaia用設定
+gaia-etch.properties       Gaia用設定（金属エッチング）
+gaia-ohp.properties        Gaia用設定（OHPフィルム印刷、天の川強調あり）
 generate.py                インストール不要の実行用ラッパー
 src/gingaforge/            ライブラリ本体
 source/                    入力データ（FITS、Gaiaキャッシュ）
@@ -129,6 +134,11 @@ Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で
 | `galaxy.etch.cell-size-mm` | 0.4 | 原盤で光量を合計するセル幅。穴径＋金属幅の整数倍に切り下げ |
 | `galaxy.etch.flux-gain` | 0.05 | 全領域共通の光量倍率（穴面積の合計に掛ける）。微光星増加による飽和を抑える初期値 |
 | `galaxy.etch.seed` | 0 | セル内の穴の選択を再現する乱数種 |
+| `galaxy.etch.milky-way` | no（OHP用はyes） | 天の川強調（下記）を使うか |
+| `galaxy.etch.milky-way.black-percentile` | 40 | 平滑化した明るさがこのパーセンタイル以下の場所を遮光（黒点） |
+| `galaxy.etch.milky-way.anchor-percentile` | 95 | この明るさの場所は強調なしと同じ穴面積。より明るい部分はさらに明るくなる |
+| `galaxy.etch.milky-way.gamma` | 1 | 黒点から基準点までの階調。1は直線、1より大きいと天の川の縁が暗くなる |
+| `galaxy.etch.milky-way.smoothing-mm` | 1 | 明るさを測る中央値平滑化の範囲（原盤上のmm、セル数に換算して奇数に切り上げ） |
 | `galaxy.gaia.bright-limit` | 7.5 | G等級の最輝側境界。この等級自体は含まない |
 | `galaxy.gaia.faint-limit` | 17 | G等級の最微側境界。この等級自体を含む |
 | `galaxy.gaia.sky-bin-deg` | 0.1 | 取得時の天球上の集計幅。0.05〜1度、60度を等分する値 |
@@ -163,8 +173,33 @@ GaiaデータはESA/Gaia/DPACによります。発表等では[Gaiaの謝辞・�
 同梱の `gaia-etch.properties` は移行前の調整値を引き継いでいます。枠は60 mm四方、
 基準穴半径は0.1 mm、`color.invert = no`（白地に黒穴）、出力先は `output_inverse/galaxy/` です。
 `color.invert = yes` なら黒地に白穴になります。OHPの138.5 mm枠とは独立しています。
-`output/galaxy/` と `output_inverse/galaxy/` に以前のGaia生成物も移しています。
+`output_inverse/galaxy/` には以前のGaia生成物も移しています。
 既存ファイルを更新せず試す場合は、`output.directory` を別フォルダへ変更してください。
+
+### OHPフィルム印刷用のGaia原盤と天の川強調
+
+金属エッチングでは0.02 mmの穴を加工できないため、同じ穴の原盤をOHPフィルムに印刷して使います。
+`gaia-ohp.properties` は穴径0.02 mm・穴の間隔0.02 mm・セル0.2 mm、60 mm枠、黒地に白穴
+（黒いインクが遮光、穴が透過）で `output/galaxy/` に出力し、次の天の川強調を有効にしています。
+
+G帯の光量をそのまま穴面積にすると、銀河面に集中しない7.5〜12等程度の前景星が光量の大半を占め、
+天の川中心（|b| = 2〜5°）と外側（|b| = 15〜20°）の明るさの比は約2.7倍しかありません
+（`source/gaia/` の集計値）。実際の空では一様な夜光より暗い成分は背景に埋もれますが、
+ドームには夜光がないため、この成分が「天の川の外側の明るさ」としてそのまま見えます。
+そこで背景に相当する一様な明るさを差し引き、天の川だけを残します。
+
+1. 各セルの光量を、そのセルが天球上で占める立体角で割って表面輝度にします（偏心投影機にも対応）。
+2. 原盤ごとに `smoothing-mm` 四方の中央値で平滑化し、明るさ S とします。中央値なので孤立した明るい星に引っ張られません。
+3. 4原盤すべてのセルの S について、`black-percentile` の値を黒点 B、`anchor-percentile` の値を基準点 M とします（原盤ごとの自動露出はしません）。
+4. `T(S) = M × max(0, (S − B) / (M − B))^gamma` とし、各セルの光量に `T(S) / S` を掛けてから穴を配置します。
+
+倍率は平滑化した明るさから決め、元のセル光量に掛けるため、天の川内部の暗黒帯や星団などの細部は残ります。
+S が黒点以下の場所は、明るい星も含めて穴を開けません。黒点を上げると外側が暗く天の川が細くなり、
+下げると外側の光が戻ります。全体の明るさは従来どおり `galaxy.etch.flux-gain` で調整します。
+
+強調後の穴面積はG帯光量に比例しない表示用の階調です。レポートの `milky_way` に黒点・基準点
+（基準等級の星の個数/平方度）と遮光したセル数を、各原盤の `linear_area_mm2` に強調前の要求面積を記録します。
+印刷時の穴の太り・つぶれやフィルムの透過率は含まれないため、テスト印刷で黒点・`flux-gain` を調整してください。
 
 ## Mellinger 全天画像による OHP 原盤
 

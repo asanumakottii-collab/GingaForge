@@ -92,8 +92,15 @@ def _process_gaia(props, config_directory, writer_type, fetch=False, query_only=
                 print(f"  {input_stats['rows']:,}レコード / {input_stats['stars']:,}天体", flush=True)
         if not sum(builder.counts.values()):
             raise ValueError("Gaia入力に担当領域・等級範囲の天体がありません。")
+        if etching.milky_way:
+            print("天の川強調: 背景の明るさを差し引いています。", flush=True)
         print("最小穴径・金属幅を満たす穴を配置しています。", flush=True)
         holes, report = builder.build()
+        milky_way = report["milky_way"]
+        if milky_way["enabled"]:
+            print(f"天の川強調: 黒点 {milky_way['black_level']:.3g}、基準点 {milky_way['anchor_level']:.3g}"
+                  f"（G={gaia.reference:g}等星換算/平方度）、"
+                  f"{milky_way['dark_cells']:,}/{milky_way['cells']:,}セルを遮光", flush=True)
         if not holes:
             raise ValueError("出力できる穴がありません。光量倍率・最小穴径・用紙配置を確認してください。")
         report["generator"] = "GingaForge / Gaia DR3 etching"
