@@ -10,57 +10,72 @@ Python 3.11以上を使用し、このフォルダで次を実行します。
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e '.[test]'   # requirements.txt と同じ
 
 # OHPフィルム: 既存のFITSからPNG・2ページPDF・校正シートを生成
-.venv/bin/python generate.py ohp
+.venv/bin/gingaforge ohp
 
 # Gaiaエッチング: 保存済みキャッシュからSVGと光量レポートを生成
-.venv/bin/python generate.py gaia-etch
+.venv/bin/gingaforge gaia-etch
 
 # 印刷用ベクトルPDF
-.venv/bin/python generate.py gaia-etch -PDF
+.venv/bin/gingaforge gaia-etch -PDF
 
 # キャッシュがない場合、または等級・集計ビンを変更した場合
-.venv/bin/python generate.py gaia-etch --download-gaia
+.venv/bin/gingaforge gaia-etch --download-gaia
 
 # 通信も原盤出力もせず、取得クエリを確認
-.venv/bin/python generate.py gaia-etch --gaia-query
+.venv/bin/gingaforge gaia-etch --gaia-query
 
 # 別の設定ファイルを使用
-.venv/bin/python generate.py gaia-etch -f gaia-etch.properties
+.venv/bin/gingaforge gaia-etch -f gaia-etch.properties
 
 # OHP保存画像・PDFと、Gaia入出力・投影・穴間隔・統合コマンドを検証
 .venv/bin/python -m unittest discover -v
 ```
+
+`gingaforge` コマンドは `python -m gingaforge` でも、インストールせずに `python3 generate.py` でも同じように実行できます。
+ライブラリとしては `import gingaforge` で使用できます（例: `from gingaforge.ohp import build`、`from gingaforge.gaia_etch import main`）。
 
 | 方式 | 設定ファイル | 入力 | 主な出力 |
 |---|---|---|---|
 | `ohp` | `galaxyconfig.properties`（従来のまま） | `source/mwpan2_RGB_3600.fits` | `output/mellinger-ohp-plates.pdf`、PNG、校正PDF |
 | `gaia-etch` | `gaia-etch.properties`（OTLから移行） | `source/gaia/`、または個別星CSV/CSV.gz | `output_inverse/galaxy/gaia-etch-*.svg/pdf`、レポート |
 
-OHPの従来コマンド `python3 build_mellinger_ohp.py --config galaxyconfig.properties` も使用できます。
-Gaiaも `python3 galaxy_transformer.py -f gaia-etch.properties` で直接実行できます。
+OHPは `python -m gingaforge.ohp --config galaxyconfig.properties`、
+Gaiaは `python -m gingaforge.gaia_etch -f gaia-etch.properties` で個別に実行することもできます。
+設定ファイルを省略した場合は、リポジトリ直下の同梱設定を使用します。
 生成方式はコマンドで選択するため、`galaxy.mode` の指定は不要です。
 以前のGaia設定を持ち込む場合の `galaxy.mode = gaia-etch` は受け付けます。
 
-両方式のN0/N1/S0/S1の銀経領域を `galaxy_geometry.py` に集約しています。
+両方式のN0/N1/S0/S1の銀経領域を `gingaforge/galaxy_geometry.py` に集約しています。
 中心配置では円筒投影の向きと座標が一致します。Gaiaは偏心投影機にも対応し、OHPは中心配置のみです。
 OHPの緑チャンネルとGaiaのG帯は異なる観測量のため、それぞれの光量処理・加工条件を使用します。
 
 ## コードの構成
 
-| ファイル | 役割 |
+```
+pyproject.toml             パッケージ定義（`gingaforge` コマンド）
+galaxyconfig.properties    OHP用設定
+gaia-etch.properties       Gaia用設定
+generate.py                インストール不要の実行用ラッパー
+src/gingaforge/            ライブラリ本体
+source/                    入力データ（FITS、Gaiaキャッシュ）
+output/, output_inverse/   生成物
+tests/                     テスト
+```
+
+| モジュール（`src/gingaforge/`） | 役割 |
 |---|---|
-| `generate.py` | OHP / Gaiaの共通コマンド |
-| `build_mellinger_ohp.py` | FITSの再投影、階調変換、OHP用PNG・PDF |
-| `galaxy_transformer.py` | Gaia原盤の生成コマンド |
+| `cli.py` | OHP / Gaiaの共通コマンド（`gingaforge`） |
+| `ohp.py` | FITSの再投影、階調変換、OHP用PNG・PDF（旧 `build_mellinger_ohp.py`） |
+| `gaia_etch.py` | Gaia原盤の生成コマンド（旧 `galaxy_transformer.py`） |
 | `galaxy_geometry.py` | 共通領域定義、Gaiaの円筒投影・逆投影 |
 | `gaia_catalog.py` | Gaia DR3取得、キャッシュ検証、CSV入力 |
 | `galaxy_etching.py` | 光量の集計、穴の配置、加工寸法・光量誤差の記録 |
 | `models.py` / `mathvector.py` | 座標・穴データ、ICRSと銀河座標の変換 |
 | `plate_writer.py` | エッチング原盤のSVG・ベクトルPDF |
-| `config.py` | Gaia用プロパティファイルの読込 |
+| `config.py` | Gaia用プロパティファイルの読込、リポジトリのルート |
 
 ## Gaiaエッチング原盤の担当領域
 
@@ -222,14 +237,14 @@ pixel = round(255 × v^(1 / display-gamma))
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python build_mellinger_ohp.py
-.venv/bin/python -m unittest -v test_mellinger_ohp.py
+.venv/bin/python -m pip install -e '.[test]'
+.venv/bin/gingaforge ohp
+.venv/bin/python -m unittest -v tests.test_mellinger_ohp
 ```
 
 元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/` 内の同名生成物を更新します。
 
-`galaxyconfig.properties` で原盤までの距離・出力倍率・解像度・濃淡を変更できます。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
+`galaxyconfig.properties` で原盤までの距離・出力倍率・解像度・濃淡を変更できます。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`gingaforge/galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
 
 入力・出力の相対パスは `--config` で指定した設定ファイルの所在フォルダを基準に解決します。
 

@@ -3,3 +3,7 @@ __pycache__/
 .DS_Store
 .venv/
 source/gaia/
+tmp/
+*.egg-info/
+build/
+dist/

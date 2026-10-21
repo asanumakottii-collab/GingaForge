@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproject Mellinger's observed G image to the centered OTL cylinder."""
 from __future__ import annotations
 
@@ -17,9 +16,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
-from galaxy_geometry import REGIONS
+from .config import PROJECT_ROOT
+from .galaxy_geometry import REGIONS
 
-ROOT = Path(__file__).resolve().parent
+ROOT = PROJECT_ROOT
 
 
 def read_config(path):
