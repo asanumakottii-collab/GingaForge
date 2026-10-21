@@ -7,9 +7,9 @@ import unittest
 from unittest.mock import patch
 from io import StringIO
 
-from galaxy_geometry import GalaxyTransformer, REGIONS
-from galaxy_transformer import main as gaia_main
-from models import SpherePosition
+from gingaforge.galaxy_geometry import GalaxyTransformer, REGIONS
+from gingaforge.gaia_etch import main as gaia_main
+from gingaforge.models import SpherePosition
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,7 +20,7 @@ class IntegrationTests(unittest.TestCase):
                               cwd=cwd, text=True, capture_output=True, timeout=30)
 
     def test_shared_projection_matches_ohp_in_all_four_regions(self):
-        from build_mellinger_ohp import plate_to_sky
+        from gingaforge.ohp import plate_to_sky
         for distance, scale in ((50., 1.), (70., 2.)):
             transformer = GalaxyTransformer(.1, 6500. * scale, 0., 0., distance * scale)
             for region, (start, end) in enumerate(REGIONS.values()):
@@ -68,7 +68,7 @@ class IntegrationTests(unittest.TestCase):
             config = Path(directory) / 'legacy.properties'
             config.write_text('galaxy.mode=legacy\n')
             for flags in ([], ['--download-gaia'], ['--gaia-query']):
-                with (patch('gaia_catalog.download_gaia', side_effect=AssertionError('unexpected network')),
+                with (patch('gingaforge.gaia_catalog.download_gaia', side_effect=AssertionError('unexpected network')),
                       patch('builtins.input', side_effect=AssertionError('unexpected prompt')),
                       patch('sys.stdout', new_callable=StringIO),
                       patch('sys.stderr', new_callable=StringIO)):

@@ -4,7 +4,7 @@ import numpy as np
 from astropy.io import fits
 from PIL import Image
 from pypdf import PdfReader
-from build_mellinger_ohp import (ROOT, REGIONS, read_config, geometry, plate_to_sky,
+from gingaforge.ohp import (ROOT, REGIONS, read_config, geometry, plate_to_sky,
                                celestial_wcs, bilinear, tone_map)
 
 

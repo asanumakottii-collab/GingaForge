@@ -21,7 +21,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
-from models import SpherePosition
+from .models import SpherePosition
 
 TAP_URL = "https://gea.esac.esa.int/tap-server/tap"
 
