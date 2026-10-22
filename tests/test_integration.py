@@ -40,12 +40,12 @@ class IntegrationTests(unittest.TestCase):
             configs = root / 'configs'
             write_cache(configs / 'cache', {0: [(30.05, .05, .01, 1)]})
             config = configs / 'custom.properties'
-            config.write_text('galaxy.gaia.input=cache\noutput.directory=masters\n'
+            config.write_text('galaxy.gaia.input=cache\n'
                               'galaxy.gaia.file.prefix=custom-\nplate.frame-size=60\ncolor.invert=y\n')
             result = self.run_command('gaia-etch', '--pdf', '-f', str(config), cwd=root)
             self.assertEqual(0, result.returncode, result.stderr)
-            output = configs / 'masters/galaxy'
-            self.assertFalse((root / 'masters').exists())
+            output = configs / 'output/gaia-etch/inverted'
+            self.assertFalse((root / 'output').exists())
             self.assertEqual(['custom-0.pdf', 'custom-1.pdf'], sorted(p.name for p in output.iterdir()))
             self.assertEqual(['N0', 'S0'], PdfReader(output / 'custom-0.pdf').pages[0].extract_text().split())
 
@@ -62,7 +62,7 @@ class IntegrationTests(unittest.TestCase):
             config.write_text(text)
             result = self.run_command('ohp', '--config', str(config), cwd=root)
             self.assertEqual(0, result.returncode, result.stderr)
-            output = configs / 'output'
+            output = configs / 'output/ohp'
             self.assertFalse((root / 'output').exists())
             self.assertEqual(['mellinger-ohp-plates.pdf'], [p.name for p in output.iterdir()])
             self.assertEqual(2, len(PdfReader(output / 'mellinger-ohp-plates.pdf').pages))

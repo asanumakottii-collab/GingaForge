@@ -110,17 +110,23 @@ class GalaxyOutputTests(unittest.TestCase):
             for configured, expected in ((None, 69.25), ("0", 69.25), ("100", 50.)):
                 with self.subTest(pdf=pdf, configured=configured):
                     with tempfile.TemporaryDirectory() as directory:
-                        props = {"output.directory": directory, "scale": "2"}
+                        props = {"scale": "2"}
                         if configured is not None:
                             props["plate.frame-size"] = configured
                         with _init_plate_writer(props, directory, pdf) as writer:
                             self.assertEqual(expected, writer.r)
                             writer.write_frames(2)
                         if not pdf:
-                            for page in Path(directory, "galaxy").glob("*.svg"):
+                            for page in Path(directory, "output", "gaia-etch", "normal").glob("*.svg"):
                                 for rect in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}rect"):
                                     self.assertEqual(f"{expected * 2}mm", rect.get("width"))
                                     self.assertEqual(f"{expected * 2}mm", rect.get("height"))
+
+    def test_color_invert_selects_output_folder(self):
+        for value, folder in (("no", "normal"), ("yes", "inverted"), ("y", "inverted")):
+            with self.subTest(value=value):
+                writer = _init_plate_writer({"color.invert": value}, "configs")
+                self.assertEqual(Path("configs", "output", "gaia-etch", folder), writer.output_dir)
 
     def test_invalid_frame_size_is_rejected(self):
         for value in ("-1", "nan", "inf"):
@@ -130,20 +136,20 @@ class GalaxyOutputTests(unittest.TestCase):
 
     def test_holes_outside_frame_are_skipped(self):
         with tempfile.TemporaryDirectory() as directory:
-            with _init_plate_writer({"output.directory": directory}, directory) as writer:
+            with _init_plate_writer({}, directory) as writer:
                 writer.write_frames(2)
                 writer.write_hole(0, 0, writer.r, -writer.r, .01)
                 writer.write_hole(0, 0, writer.r + .01, 0., .01)
                 writer.write_hole(1, 1, 0., math.nan, .01)
-            circles = [c for page in Path(directory, "galaxy").glob("*.svg")
+            circles = [c for page in Path(directory, "output", "gaia-etch", "normal").glob("*.svg")
                        for c in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}circle")]
             self.assertEqual(1, len(circles))
 
     def test_svg_creates_all_four_frames_without_stars(self):
         with tempfile.TemporaryDirectory() as directory:
-            with _init_plate_writer({"output.directory": directory}, directory) as writer:
+            with _init_plate_writer({}, directory) as writer:
                 writer.write_frames(2)
-            pages = sorted(Path(directory, "galaxy").glob("*.svg"))
+            pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.svg"))
             self.assertEqual(["gaia-etch-0.svg", "gaia-etch-1.svg"], [p.name for p in pages])
             for page, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):
                 root = ET.parse(page).getroot()
@@ -156,9 +162,9 @@ class GalaxyOutputTests(unittest.TestCase):
         from pypdf import PdfReader
 
         with tempfile.TemporaryDirectory() as directory:
-            with _init_plate_writer({"output.directory": directory}, directory, pdf=True) as writer:
+            with _init_plate_writer({}, directory, pdf=True) as writer:
                 writer.write_frames(2)
-            pages = sorted(Path(directory, "galaxy").glob("*.pdf"))
+            pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.pdf"))
             self.assertEqual(2, len(pages))
             for path, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):
                 pdf = PdfReader(path)

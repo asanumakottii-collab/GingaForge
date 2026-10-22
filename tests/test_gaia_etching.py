@@ -200,8 +200,7 @@ class GaiaCommandTests(unittest.TestCase):
         directory = Path(directory)
         write_cache(directory / "gaia", {0: [(30.05, .05, .01, 1)]})
         config = directory / "galaxy.properties"
-        config.write_text(f"galaxy.gaia.input=gaia\n"
-                          f"output.directory={directory / 'out'}\ncolor.invert=yes\n")
+        config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\n")
         return config
 
     def test_real_svg_pipeline_has_no_prompts(self):
@@ -210,7 +209,7 @@ class GaiaCommandTests(unittest.TestCase):
             with (patch("builtins.input", side_effect=AssertionError("unexpected prompt")),
                   patch("sys.stdout", new_callable=StringIO)):
                 self.assertEqual(0, main(["-f", str(config)]))
-            output = Path(directory) / "out" / "galaxy"
+            output = Path(directory) / "output" / "gaia-etch" / "inverted"
             pages = sorted(output.glob("*.svg"))
             self.assertEqual(2, len(pages))
             self.assertEqual(pages, sorted(output.iterdir()))
@@ -221,7 +220,7 @@ class GaiaCommandTests(unittest.TestCase):
     def test_missing_input_does_not_overwrite_existing_output(self):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
-            output = Path(directory) / "out" / "galaxy"
+            output = Path(directory) / "output" / "gaia-etch" / "inverted"
             output.mkdir(parents=True)
             sentinel = output / "gaia-etch-0.svg"
             sentinel.write_text("existing plate")
@@ -236,7 +235,7 @@ class GaiaCommandTests(unittest.TestCase):
             config = self.config_and_input(directory)
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-PDF", "-f", str(config)]))
-            pages = sorted((Path(directory) / "out" / "galaxy").glob("*.pdf"))
+            pages = sorted((Path(directory) / "output" / "gaia-etch" / "inverted").glob("*.pdf"))
             self.assertEqual(2, len(pages))
             self.assertEqual(["N0", "S0"], PdfReader(pages[0]).pages[0].extract_text().split())
 
