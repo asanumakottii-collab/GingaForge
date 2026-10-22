@@ -25,7 +25,7 @@ import math
 from pathlib import Path
 import sys
 
-from .config import PROJECT_ROOT, load_properties, positive_number
+from .config import PROJECT_ROOT, load_properties, output_directory, positive_number
 from .gaia_catalog import GaiaSettings, download_gaia, iter_flux_samples
 from .galaxy_etching import EtchingBuilder, EtchingSettings
 from .galaxy_geometry import GalaxyTransformer
@@ -52,8 +52,8 @@ def _init_plate_writer(props, config_directory, pdf=False):
     frame_size = positive_number(props, "plate.frame-size", 0., allow_zero=True)
     filename_prefix = props.get("galaxy.gaia.file.prefix", "gaia-etch-")
     invert_color = props.get("color.invert", "no").strip().lower() in {"y", "yes", "true"}
-    output = Path(props.get("output.directory", "").strip() or "output")
-    output_dir = (output if output.is_absolute() else Path(config_directory) / output) / "galaxy"
+    # 白地に黒穴（normal）と黒地に白穴（inverted）は別フォルダに出力する。
+    output_dir = output_directory(config_directory, "gaia-etch", "inverted" if invert_color else "normal")
     writer_class = PlateWriterPDF if pdf else PlateWriterSVG
     return writer_class(column, row, frame_size / 2, filename_prefix, invert_color, output_dir)
 

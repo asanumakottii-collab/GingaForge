@@ -24,6 +24,11 @@ def load_properties(path):
     return props
 
 
+def output_directory(config_directory, *parts):
+    """生成物の保存先。設定ファイルと同じフォルダの ``output/`` 配下に方式別に分ける。"""
+    return Path(config_directory).joinpath("output", *parts)
+
+
 def positive_number(props, key, default, *, allow_zero=False):
     try:
         value = float(props.get(key, default))

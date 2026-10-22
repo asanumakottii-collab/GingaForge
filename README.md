@@ -37,10 +37,18 @@ python3 -m venv .venv
 
 | 方式 | 設定ファイル | 入力 | 出力 |
 |---|---|---|---|
-| `ohp` | `galaxyconfig.properties` | `source/mwpan2_RGB_3600.fits` | `output/mellinger-ohp-plates.pdf` |
-| `gaia-etch` | `gaia-etch.properties` | `source/gaia/`（`--download-gaia` で取得） | `output_inverse/galaxy/gaia-etch-*.svg/pdf` |
+| `ohp` | `galaxyconfig.properties` | `source/mwpan2_RGB_3600.fits` | `output/ohp/mellinger-ohp-plates.pdf` |
+| `gaia-etch` | `gaia-etch.properties` | `source/gaia/`（`--download-gaia` で取得） | `output/gaia-etch/{normal,inverted}/gaia-etch-*.svg/pdf` |
 
 設定ファイルを省略した場合は、リポジトリ直下の同梱設定を使用します。
+出力先は設定では指定せず、設定ファイルと同じフォルダの `output/` 以下に方式別に保存します。
+
+```
+output/
+  ohp/                 OHP原盤PDF
+  gaia-etch/normal/    Gaia原盤（color.invert = no: 白地に黒穴）
+  gaia-etch/inverted/  Gaia原盤（color.invert = yes: 黒地に白穴）
+```
 
 両方式のN0/N1/S0/S1の銀経領域を `gingaforge/galaxy_geometry.py` に集約しています。
 中心配置では円筒投影の向きと座標が一致します。Gaiaは偏心投影機にも対応し、OHPは中心配置のみです。
@@ -54,7 +62,7 @@ galaxyconfig.properties    OHP用設定
 gaia-etch.properties       Gaia用設定
 src/gingaforge/            ライブラリ本体
 source/                    入力データ（FITS、Gaiaキャッシュ）
-output/, output_inverse/   生成物
+output/                    生成物（方式・白黒反転ごとのフォルダ）
 tests/                     テスト
 ```
 
@@ -107,7 +115,7 @@ Gaiaの混雑領域での欠測や限界等級より暗い恒星、散光星雲�
 
 `galaxy.gaia.input` の既定値は設定ファイルからの相対パス `source/gaia` です。
 クエリ・等級・領域・集計幅・チェックサムを保存し、通常実行時は通信せず検証して読み込みます。
-入力・出力の相対パスは設定ファイルの所在フォルダが基準です。
+入力の相対パスと出力先 `output/` は、設定ファイルの所在フォルダが基準です。
 Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で再取得してください。
 
 | 設定 | 同梱設定の値 | 意味 |
@@ -135,7 +143,7 @@ Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で
 実効的な細かさは取得ビン・原盤セル・投影光学系で制限されます。
 
 Gaiaモードは星座線を加工用原盤へ追加せず、入力待ちなしで生成します。
-`output_inverse/galaxy/gaia-etch-0.svg` と `gaia-etch-1.svg`（`-PDF`指定時はPDF）に計4原盤を出力し、
+`output/gaia-etch/normal/`（`color.invert = yes` なら `inverted/`）の `gaia-etch-0.svg` と `gaia-etch-1.svg`（`-PDF`指定時はPDF）に計4原盤を出力し、
 接頭辞は `galaxy.gaia.file.prefix` で変更できます。
 穴面積と投影光量の比例は均一照明・薄板を仮定しており、板厚、光源、エッチング精度、
 投影時のぼけによる影響は別途試作・測定してください。最小寸法を満たすことは加工成功の保証ではありません。
@@ -148,10 +156,10 @@ GaiaモードのG等級境界は、恒星投影機のV等級境界と同一で�
 GaiaデータはESA/Gaia/DPACによります。発表等では[Gaiaの謝辞・引用案内](https://www.cosmos.esa.int/web/gaia-users/credits)に従ってください。
 
 同梱の `gaia-etch.properties` は移行前の調整値を引き継いでいます。枠は60 mm四方、
-基準穴半径は0.1 mm、`color.invert = no`（白地に黒穴）、出力先は `output_inverse/galaxy/` です。
+基準穴半径は0.1 mm、`color.invert = no`（白地に黒穴）です。
 `color.invert = yes` なら黒地に白穴になります。OHPの138.5 mm枠とは独立しています。
-`output/galaxy/` と `output_inverse/galaxy/` に以前のGaia生成物も移しています。
-既存ファイルを更新せず試す場合は、`output.directory` を別フォルダへ変更してください。
+既存ファイルを更新せず試す場合は、設定ファイルを別フォルダにコピーして `-f` で指定してください。
+そのフォルダの `output/` に出力されます（`galaxy.gaia.input` は絶対パスにしてください）。
 
 ## Mellinger 全天画像による OHP 原盤
 
@@ -159,7 +167,7 @@ Axel Mellinger の科学用全天パノラマ FITS を銀河座標で再投影�
 
 ### 印刷するファイル
 
-`output/mellinger-ohp-plates.pdf`：A4、2ページ。1ページ目は N0 / S0、2ページ目は N1 / S1。黒い正方形は 138.5 mm 四方。各区画は8ビットグレースケール画像で、物理寸法を正確に指定して配置しています。
+`output/ohp/mellinger-ohp-plates.pdf`：A4、2ページ。1ページ目は N0 / S0、2ページ目は N1 / S1。黒い正方形は 138.5 mm 四方。各区画は8ビットグレースケール画像で、物理寸法を正確に指定して配置しています。
 
 | 区画 | 銀経 l | 銀緯 b | 紙面の上 → 下 |
 |---|---|---|---|
@@ -223,11 +231,11 @@ python3 -m venv .venv
 .venv/bin/python -m unittest -v tests.test_mellinger_ohp
 ```
 
-元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/mellinger-ohp-plates.pdf` を更新します。
+元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/ohp/mellinger-ohp-plates.pdf` を更新します。
 
 `galaxyconfig.properties` で原盤までの距離・出力倍率・解像度・濃淡を変更できます。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`gingaforge/galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
 
-入力・出力の相対パスは `--config` で指定した設定ファイルの所在フォルダを基準に解決します。
+入力の相対パスと出力先 `output/ohp/` は、`--config` で指定した設定ファイルの所在フォルダを基準にします。
 
 ## コードのライセンス
 

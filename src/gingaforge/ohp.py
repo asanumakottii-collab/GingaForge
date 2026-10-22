@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
-from .config import PROJECT_ROOT
+from .config import PROJECT_ROOT, output_directory
 from .galaxy_geometry import REGIONS
 
 
@@ -145,7 +145,7 @@ def build(config_path):
     cfg = read_config(config_path)
     directory = Path(config_path).resolve().parent
     source = directory / cfg["source-fits"]
-    output = directory / cfg["output-directory"]
+    output = output_directory(directory, "ohp")
     geometry(cfg)
     data = fits.getdata(source)
     if data.shape != (3, 1800, 3600):
