@@ -76,8 +76,15 @@ def generate(config_path, pdf=False, download=False):
         builder.add_sample(position, flux)
     if not builder.cells:
         raise ValueError("Gaia入力に担当領域・等級範囲の天体がありません。")
+    if etching.milky_way:
+        print("天の川強調: 背景の明るさを差し引いています。", flush=True)
     print(f"最終穴径 {etching.min_diameter_mm:g} mm、金属幅 {etching.min_web_mm:g} mm の穴を配置しています。", flush=True)
     holes, plates = builder.build()
+    if builder.milky_way:
+        milky_way = builder.milky_way
+        print(f"天の川強調: 黒点 {milky_way['black_level']:.3g}、基準点 {milky_way['anchor_level']:.3g}"
+              f"（G={gaia.reference:g}等星換算/平方度）、"
+              f"{milky_way['dark_cells']:,}/{milky_way['cells']:,}セルを遮光", flush=True)
     if not len(holes):
         raise ValueError("出力できる穴がありません。光量倍率・最小穴径・用紙配置を確認してください。")
     with writer:
