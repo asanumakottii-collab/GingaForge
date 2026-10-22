@@ -3,13 +3,10 @@ import math
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
-from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
 
-from gingaforge.gaia_etch import GalaxyTransformer, _init_plate_writer, main
+from gingaforge.gaia_etch import GalaxyTransformer, _init_plate_writer
 from gingaforge.models import SpherePosition
-from gingaforge.plate_writer import PlateWriterType
 
 
 def _position(longitude, latitude=0.):
@@ -107,21 +104,19 @@ class GalaxyTransformerTests(unittest.TestCase):
 
 class GalaxyOutputTests(unittest.TestCase):
     def test_configured_frame_size_in_svg_and_pdf(self):
-        for writer_type in (PlateWriterType.SVG, PlateWriterType.PDF):
-            if writer_type == PlateWriterType.PDF and not importlib.util.find_spec("reportlab"):
+        for pdf in (False, True):
+            if pdf and not importlib.util.find_spec("reportlab"):
                 continue
             for configured, expected in ((None, 69.25), ("0", 69.25), ("100", 50.)):
-                with self.subTest(writer_type=writer_type, configured=configured):
-                    with tempfile.TemporaryDirectory() as directory, patch("sys.stdout", new_callable=StringIO):
+                with self.subTest(pdf=pdf, configured=configured):
+                    with tempfile.TemporaryDirectory() as directory:
                         props = {"output.directory": directory, "scale": "2"}
                         if configured is not None:
                             props["plate.frame-size"] = configured
-                        writer = _init_plate_writer(props, writer_type)
-                        self.assertEqual(expected, writer.r)
-                        self.assertTrue(writer._is_position_in_frame(expected, expected))
-                        self.assertFalse(writer._is_position_in_frame(expected + .01, 0.))
-                        writer.close()
-                        if writer_type == PlateWriterType.SVG:
+                        with _init_plate_writer(props, directory, pdf) as writer:
+                            self.assertEqual(expected, writer.r)
+                            writer.write_frames(2)
+                        if not pdf:
                             for page in Path(directory, "galaxy").glob("*.svg"):
                                 for rect in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}rect"):
                                     self.assertEqual(f"{expected * 2}mm", rect.get("width"))
@@ -129,14 +124,25 @@ class GalaxyOutputTests(unittest.TestCase):
 
     def test_invalid_frame_size_is_rejected(self):
         for value in ("-1", "nan", "inf"):
-            with self.subTest(value=value), patch("sys.stdout", new_callable=StringIO):
+            with self.subTest(value=value):
                 with self.assertRaisesRegex(ValueError, "plate.frame-size"):
-                    _init_plate_writer({"plate.frame-size": value}, PlateWriterType.SVG)
+                    _init_plate_writer({"plate.frame-size": value}, ".")
+
+    def test_holes_outside_frame_are_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with _init_plate_writer({"output.directory": directory}, directory) as writer:
+                writer.write_frames(2)
+                writer.write_hole(0, 0, writer.r, -writer.r, .01)
+                writer.write_hole(0, 0, writer.r + .01, 0., .01)
+                writer.write_hole(1, 1, 0., math.nan, .01)
+            circles = [c for page in Path(directory, "galaxy").glob("*.svg")
+                       for c in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}circle")]
+            self.assertEqual(1, len(circles))
 
     def test_svg_creates_all_four_frames_without_stars(self):
-        with tempfile.TemporaryDirectory() as directory, patch("sys.stdout", new_callable=StringIO):
-            writer = _init_plate_writer({"output.directory": directory}, PlateWriterType.SVG)
-            writer.close()
+        with tempfile.TemporaryDirectory() as directory:
+            with _init_plate_writer({"output.directory": directory}, directory) as writer:
+                writer.write_frames(2)
             pages = sorted(Path(directory, "galaxy").glob("*.svg"))
             self.assertEqual(["gaia-etch-0.svg", "gaia-etch-1.svg"], [p.name for p in pages])
             for page, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):
@@ -149,9 +155,9 @@ class GalaxyOutputTests(unittest.TestCase):
     def test_pdf_creates_all_four_frames_without_stars(self):
         from pypdf import PdfReader
 
-        with tempfile.TemporaryDirectory() as directory, patch("sys.stdout", new_callable=StringIO):
-            writer = _init_plate_writer({"output.directory": directory}, PlateWriterType.PDF)
-            writer.close()
+        with tempfile.TemporaryDirectory() as directory:
+            with _init_plate_writer({"output.directory": directory}, directory, pdf=True) as writer:
+                writer.write_frames(2)
             pages = sorted(Path(directory, "galaxy").glob("*.pdf"))
             self.assertEqual(2, len(pages))
             for path, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):

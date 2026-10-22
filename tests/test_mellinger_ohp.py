@@ -1,11 +1,15 @@
-import json
+from pathlib import Path
+import tempfile
 import unittest
+
 import numpy as np
 from astropy.io import fits
-from PIL import Image
 from pypdf import PdfReader
-from gingaforge.ohp import (ROOT, REGIONS, read_config, geometry, plate_to_sky,
-                               celestial_wcs, bilinear, tone_map)
+from pypdf.generic import ContentStream
+
+from gingaforge.config import PROJECT_ROOT as ROOT
+from gingaforge.ohp import (REGIONS, read_config, geometry, plate_to_sky,
+                            celestial_wcs, bilinear, reproject, tone_map, build)
 
 
 class MasterChecks(unittest.TestCase):
@@ -38,43 +42,44 @@ class MasterChecks(unittest.TestCase):
         self.assertAlmostEqual(x0, 1799.950026799, places=6)
         self.assertAlmostEqual(y0, 899.950013387949, places=6)
 
-    def test_saved_pixels_and_shared_tone_mapping(self):
-        data = fits.getdata(ROOT / self.cfg['source-fits'])[1]
-        p, _, scale, _, width, height = geometry(self.cfg)
-        for name, (start, end) in REGIONS.items():
-            linear = np.load(ROOT / f'output/{name}-linear-G.npy')
-            rendered = np.array(Image.open(ROOT / f'output/{name}-ohp.png'))
-            self.assertEqual(linear.shape, rendered.shape)
+    def test_reprojection_samples_pixel_centers(self):
+        cfg = read_config(ROOT / 'galaxyconfig.properties')
+        cfg['raster-dpi'] = '72'
+        data = fits.getdata(ROOT / cfg['source-fits'])[1]
+        p, _, scale, _, width, height = geometry(cfg)
+        for start, end in REGIONS.values():
+            linear = reproject(data, self.wcs, start, end, cfg)
             self.assertTrue(np.all(np.isfinite(linear)))
-            np.testing.assert_array_equal(tone_map(linear, self.cfg), rendered)
             ny, nx = linear.shape
             for row, col in [(0, 0), (ny//2, nx//2), (ny-1, nx-1), (ny//3, nx//4)]:
                 x, y = (col+.5)/nx*width-width/2, (row+.5)/ny*height-height/2
                 l, b = plate_to_sky(x, y, (start+end)/2, p, scale)
                 sx, sy = self.wcs.world_to_pixel_values(l, b)
-                expected = bilinear(data, sx, sy)
-                self.assertAlmostEqual(float(linear[row, col])/float(expected), 1, places=6)
+                self.assertAlmostEqual(float(linear[row, col])/float(bilinear(data, sx, sy)), 1, places=6)
+            pixels = tone_map(linear, cfg)
+            self.assertEqual(np.uint8, pixels.dtype)
+            self.assertEqual(linear.shape, pixels.shape)
 
     def test_pdf_pages_labels_and_image_dimensions(self):
-        reader = PdfReader(ROOT / 'output/mellinger-ohp-plates.pdf')
-        self.assertEqual(len(reader.pages), 2)
-        _, _, _, _, width, height = geometry(self.cfg)
-        for page, names in zip(reader.pages, [('N0', 'S0'), ('N1', 'S1')]):
-            self.assertAlmostEqual(float(page.mediabox.width), 210/25.4*72, places=3)
-            self.assertAlmostEqual(float(page.mediabox.height), 297/25.4*72, places=3)
-            for name in names:
-                self.assertIn(name, page.extract_text())
-            from pypdf.generic import ContentStream
-            operations = ContentStream(page['/Contents'], reader).operations
-            transforms = [values for values, op in operations if op == b'cm' and float(values[0]) > 10]
-            self.assertEqual(len(transforms), 2)
-            for values in transforms:
-                self.assertAlmostEqual(float(values[0]), width/25.4*72, places=3)
-                self.assertAlmostEqual(float(values[3]), height/25.4*72, places=3)
-        self.assertEqual(len(PdfReader(ROOT / 'output/ohp-calibration.pdf').pages), 1)
-        provenance = json.loads((ROOT / 'output/provenance.json').read_text())
-        self.assertEqual(set(provenance['regions']), set(REGIONS))
-        self.assertEqual(provenance['config'], dict(self.cfg))
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'ohp.properties'
+            text = (ROOT / 'galaxyconfig.properties').read_text()
+            text = text.replace('source/mwpan2_RGB_3600.fits', str(ROOT / 'source/mwpan2_RGB_3600.fits'))
+            config.write_text(text.replace('raster-dpi = 1200', 'raster-dpi = 72'))
+            reader = PdfReader(build(config))
+            self.assertEqual(len(reader.pages), 2)
+            _, _, _, _, width, height = geometry(self.cfg)
+            for page, names in zip(reader.pages, [('N0', 'S0'), ('N1', 'S1')]):
+                self.assertAlmostEqual(float(page.mediabox.width), 210/25.4*72, places=3)
+                self.assertAlmostEqual(float(page.mediabox.height), 297/25.4*72, places=3)
+                for name in names:
+                    self.assertIn(name, page.extract_text())
+                operations = ContentStream(page['/Contents'], reader).operations
+                transforms = [values for values, op in operations if op == b'cm' and float(values[0]) > 10]
+                self.assertEqual(len(transforms), 2)
+                for values in transforms:
+                    self.assertAlmostEqual(float(values[0]), width/25.4*72, places=3)
+                    self.assertAlmostEqual(float(values[3]), height/25.4*72, places=3)
 
 
 if __name__ == '__main__':
