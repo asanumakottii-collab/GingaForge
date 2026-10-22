@@ -18,7 +18,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #
-"""天球・原盤上の位置とエッチング穴を表すデータクラス群。"""
+"""天球・原盤上の位置を表すデータクラス群。"""
 
 import math
 
@@ -40,24 +40,8 @@ class PlatePosition:
     def __init__(self):
         self.xmm = 0.0
         self.ymm = 0.0
-        self.dir = 0  # 北天(0)，南天(1)の別
+        self.dir = 0  # 用紙上段(0)，下段(1)の別
         self.index = 0  # ユニット番号
-
-    def __eq__(self, other):
-        if not isinstance(other, PlatePosition):
-            return NotImplemented
-        # NOTE: 原Javaコードの isSamePlate 判定にあった dir と p.index の
-        # 比較をそのまま踏襲している(挙動を変えないための忠実な移植)。
-        return (self.xmm == other.xmm and self.ymm == other.ymm
-                and self.dir == other.index and self.index == other.index)
-
-    def is_same_plate(self, other):
-        """同じ原板上にあるかどうか"""
-        return self.dir == other.dir and self.index == other.index
-
-    def distance_from_center(self):
-        """原板中心からの距離"""
-        return math.sqrt(self.xmm * self.xmm + self.ymm * self.ymm)
 
 
 class SpherePosition:
@@ -66,11 +50,6 @@ class SpherePosition:
     def __init__(self):
         self.dedeg = 0.0  # 赤緯
         self.radeg = 0.0  # 赤経
-
-    def __eq__(self, other):
-        if not isinstance(other, SpherePosition):
-            return NotImplemented
-        return self.dedeg == other.dedeg and self.radeg == other.radeg
 
     def to_vector(self, radius):
         """直交座標に変換します。"""
@@ -100,12 +79,3 @@ class SpherePosition:
         p.radeg = math.degrees(vector.get_lng())
         p.dedeg = math.degrees(vector.get_lat())
         return p
-
-
-class PlateStar:
-    """原板上の恒星を扱うクラスです。"""
-
-    def __init__(self):
-        self.rmm = 0.0  # 原板上での半径
-        self.p = None  # 原板上での位置 (PlatePosition)
-        self.hip_number = None  # Hipparcos HIP番号 (Tycho星などはNone)

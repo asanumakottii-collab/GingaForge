@@ -1,7 +1,7 @@
 # GingaForge
 
-天の川専用の原盤生成ツールです。Mellinger全天画像からOHPフィルム用の階調原盤を、
-Gaia DR3の観測光量からエッチング用の円形穴原盤を生成します。
+天の川専用の原盤生成ライブラリです。Mellinger全天画像からOHPフィルム用の階調原盤（PDF）を、
+Gaia DR3の観測光量からエッチング用の円形穴原盤（SVG / PDF）を生成します。
 恒星原盤は別プロジェクトのOTLが担当します。このフォルダだけで実行でき、OTLのコードや星表への参照はありません。
 
 ## 実行方法
@@ -12,10 +12,10 @@ Python 3.11以上を使用し、このフォルダで次を実行します。
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'   # requirements.txt と同じ
 
-# OHPフィルム: 既存のFITSからPNG・2ページPDF・校正シートを生成
+# OHPフィルム: FITSから2ページの原盤PDFを生成
 .venv/bin/gingaforge ohp
 
-# Gaiaエッチング: 保存済みキャッシュからSVGと光量レポートを生成
+# Gaiaエッチング: 保存済みキャッシュからSVG原盤を生成
 .venv/bin/gingaforge gaia-etch
 
 # 印刷用ベクトルPDF
@@ -24,29 +24,23 @@ python3 -m venv .venv
 # キャッシュがない場合、または等級・集計ビンを変更した場合
 .venv/bin/gingaforge gaia-etch --download-gaia
 
-# 通信も原盤出力もせず、取得クエリを確認
-.venv/bin/gingaforge gaia-etch --gaia-query
-
 # 別の設定ファイルを使用
 .venv/bin/gingaforge gaia-etch -f gaia-etch.properties
 
-# OHP保存画像・PDFと、Gaia入出力・投影・穴間隔・統合コマンドを検証
+# テスト
 .venv/bin/python -m unittest discover -v
 ```
 
-`gingaforge` コマンドは `python -m gingaforge` でも、インストールせずに `python3 generate.py` でも同じように実行できます。
-ライブラリとしては `import gingaforge` で使用できます（例: `from gingaforge.ohp import build`、`from gingaforge.gaia_etch import main`）。
+`gingaforge` コマンドは `python -m gingaforge` でも実行できます。
+ライブラリとしては `from gingaforge.ohp import build`（OHP原盤PDF）、
+`from gingaforge.gaia_etch import generate`（Gaia原盤SVG / PDF）を使用します。
 
-| 方式 | 設定ファイル | 入力 | 主な出力 |
+| 方式 | 設定ファイル | 入力 | 出力 |
 |---|---|---|---|
-| `ohp` | `galaxyconfig.properties`（従来のまま） | `source/mwpan2_RGB_3600.fits` | `output/mellinger-ohp-plates.pdf`、PNG、校正PDF |
-| `gaia-etch` | `gaia-etch.properties`（OTLから移行） | `source/gaia/`、または個別星CSV/CSV.gz | `output_inverse/galaxy/gaia-etch-*.svg/pdf`、レポート |
+| `ohp` | `galaxyconfig.properties` | `source/mwpan2_RGB_3600.fits` | `output/mellinger-ohp-plates.pdf` |
+| `gaia-etch` | `gaia-etch.properties` | `source/gaia/`（`--download-gaia` で取得） | `output_inverse/galaxy/gaia-etch-*.svg/pdf` |
 
-OHPは `python -m gingaforge.ohp --config galaxyconfig.properties`、
-Gaiaは `python -m gingaforge.gaia_etch -f gaia-etch.properties` で個別に実行することもできます。
 設定ファイルを省略した場合は、リポジトリ直下の同梱設定を使用します。
-生成方式はコマンドで選択するため、`galaxy.mode` の指定は不要です。
-以前のGaia設定を持ち込む場合の `galaxy.mode = gaia-etch` は受け付けます。
 
 両方式のN0/N1/S0/S1の銀経領域を `gingaforge/galaxy_geometry.py` に集約しています。
 中心配置では円筒投影の向きと座標が一致します。Gaiaは偏心投影機にも対応し、OHPは中心配置のみです。
@@ -58,7 +52,6 @@ OHPの緑チャンネルとGaiaのG帯は異なる観測量のため、それぞ
 pyproject.toml             パッケージ定義（`gingaforge` コマンド）
 galaxyconfig.properties    OHP用設定
 gaia-etch.properties       Gaia用設定
-generate.py                インストール不要の実行用ラッパー
 src/gingaforge/            ライブラリ本体
 source/                    入力データ（FITS、Gaiaキャッシュ）
 output/, output_inverse/   生成物
@@ -68,14 +61,14 @@ tests/                     テスト
 | モジュール（`src/gingaforge/`） | 役割 |
 |---|---|
 | `cli.py` | OHP / Gaiaの共通コマンド（`gingaforge`） |
-| `ohp.py` | FITSの再投影、階調変換、OHP用PNG・PDF（旧 `build_mellinger_ohp.py`） |
-| `gaia_etch.py` | Gaia原盤の生成コマンド（旧 `galaxy_transformer.py`） |
+| `ohp.py` | FITSの再投影、階調変換、OHP原盤PDF |
+| `gaia_etch.py` | Gaia原盤の生成 |
 | `galaxy_geometry.py` | 共通領域定義、Gaiaの円筒投影・逆投影 |
-| `gaia_catalog.py` | Gaia DR3取得、キャッシュ検証、CSV入力 |
-| `galaxy_etching.py` | 光量の集計、穴の配置、加工寸法・光量誤差の記録 |
-| `models.py` / `mathvector.py` | 座標・穴データ、ICRSと銀河座標の変換 |
+| `gaia_catalog.py` | Gaia DR3光量マップの取得・キャッシュ検証 |
+| `galaxy_etching.py` | 光量の集計、穴の配置 |
+| `models.py` / `mathvector.py` | 座標データ、ICRSと銀河座標の変換 |
 | `plate_writer.py` | エッチング原盤のSVG・ベクトルPDF |
-| `config.py` | Gaia用プロパティファイルの読込、リポジトリのルート |
+| `config.py` | プロパティファイルの読込、リポジトリのルート |
 
 ## Gaiaエッチング原盤の担当領域
 
@@ -109,7 +102,6 @@ Gaiaの混雑領域での欠測や限界等級より暗い恒星、散光星雲�
 `7.5 < G <= 17` の天体を銀経・銀緯0.1度のセルへ集計します。星をランダムに間引かず、
 各セルで `SUM(10**(-0.4*(G - reference_magnitude)))` と天体数を取得します。
 取得量を抑えるため個々の星をダウンロードせず、セル中心に合計光量を置いて再投影します。
-`--gaia-query` で使用する4本のクエリを通信せず確認できます。
 取得には時間がかかる場合があり、ジョブURLと状態を表示します。結果の上限超過（OVERFLOW）は拒否します。
 途中で失敗した場合、同じコマンドを再実行すると、検証済みの領域ファイルは再利用します。
 
@@ -117,10 +109,6 @@ Gaiaの混雑領域での欠測や限界等級より暗い恒星、散光星雲�
 クエリ・等級・領域・集計幅・チェックサムを保存し、通常実行時は通信せず検証して読み込みます。
 入力・出力の相対パスは設定ファイルの所在フォルダが基準です。
 Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で再取得してください。
-個別星のCSV/CSV.gzをこの設定に指定することもできます。列は
-`source_id,ra,dec,phot_g_mean_mag` が必須（赤経・赤緯はICRS、度）で、追加列は無視します。
-不正値・重複IDはエラーにします。個別CSVは網羅性を確認できないため、その旨をレポートに記録します。
-個別CSVの重複チェックはメモリを使用するため、大規模データでは集計キャッシュを推奨します。
 
 | 設定 | 同梱設定の値 | 意味 |
 |---|---:|---|
@@ -142,14 +130,13 @@ Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で
 置き、ピッチを穴径＋金属幅とするため、セル境界をまたいでも金属幅を確保します。
 各セルの必要穴数の小数部分は蛇行順に次のセルへ繰り越し、容量制限後の原盤全体の量子化誤差を
 最小穴0.5個分以内に抑えます。ゼロ光量セルに穴を足すことはありません。
-配置可能な穴数を超えた光は別の場所へ移さず、飽和損失として記録します。
+配置可能な穴数を超えた光は別の場所へ移さず、原盤ごとの飽和損失として実行時に表示します。
 穴は**局所光量の標本で、明るい星も含め一対一の実際の恒星位置を表すものではありません**。
 実効的な細かさは取得ビン・原盤セル・投影光学系で制限されます。
 
 Gaiaモードは星座線を加工用原盤へ追加せず、入力待ちなしで生成します。
 `output_inverse/galaxy/gaia-etch-0.svg` と `gaia-etch-1.svg`（`-PDF`指定時はPDF）に計4原盤を出力し、
 接頭辞は `galaxy.gaia.file.prefix` で変更できます。
-`gaia-etch-report.json` に入力の出典・設定・天体数・穴数・目標面積・出力面積・飽和損失・量子化誤差を記録します。
 穴面積と投影光量の比例は均一照明・薄板を仮定しており、板厚、光源、エッチング精度、
 投影時のぼけによる影響は別途試作・測定してください。最小寸法を満たすことは加工成功の保証ではありません。
 
@@ -172,10 +159,7 @@ Axel Mellinger の科学用全天パノラマ FITS を銀河座標で再投影�
 
 ### 印刷するファイル
 
-- `output/mellinger-ohp-plates.pdf`：A4、2ページ。1ページ目は N0 / S0、2ページ目は N1 / S1。黒い正方形は 138.5 mm 四方。
-- `output/ohp-calibration.pdf`：同じ印刷条件で使う21段階の階調見本と、縦横 50 mm の寸法確認線。
-- `output/preview.png`：4区画の比較用プレビュー。寸法を合わせた印刷には使用しません。
-- `output/{N0,N1,S0,S1}-ohp.png`：区画別の8ビットグレースケール画像。PDFには物理寸法を正確に指定して配置しています。PNGだけを印刷する場合は下記の寸法を指定してください。
+`output/mellinger-ohp-plates.pdf`：A4、2ページ。1ページ目は N0 / S0、2ページ目は N1 / S1。黒い正方形は 138.5 mm 四方。各区画は8ビットグレースケール画像で、物理寸法を正確に指定して配置しています。
 
 | 区画 | 銀経 l | 銀緯 b | 紙面の上 → 下 |
 |---|---|---|---|
@@ -213,7 +197,7 @@ pixel = round(255 × v^(1 / display-gamma))
 
 初期値は黒点0、白点1500、asinh-softening 0.05、exposure 1、gamma 1。白点1500は、4区画の元画像を等角度でサンプルした強度の約99パーセンタイルを参考に設定しました。区画ごとの自動露出・局所的なコントラスト補正は行いません。明るい星の一部は白で飽和します。`tone-mode = linear` にすると asinh の段階を省略できます。
 
-**階調圧縮後の画素値は、空の表面輝度に比例するものではありません。** またプリンターの灰色値と実際のフィルム透過率も一致するとは限りません。初期値は実機調整前の表示設定です。テストシートを同じプリンター・フィルム・インク・設定で印刷し、黒の光漏れと灰色の透過を確認してください。測定した透過率に合わせた逆変換や、投影光学系の補正は本版には含まれません。
+**階調圧縮後の画素値は、空の表面輝度に比例するものではありません。** またプリンターの灰色値と実際のフィルム透過率も一致するとは限りません。初期値は実機調整前の表示設定です。同じプリンター・フィルム・インク・設定で試し刷りし、黒の光漏れと灰色の透過を確認してください。測定した透過率に合わせた逆変換や、投影光学系の補正は本版には含まれません。
 
 元画像の恒星も残しています。別の恒星投影機と同時に使うと、明るい星が重なる可能性があります。星除去は行っていません。白黒原盤のため、長時間露光写真の色そのものは再現しません。
 
@@ -225,9 +209,6 @@ pixel = round(255 × v^(1 / display-gamma))
 - 原画像の保存場所：`source/mwpan2_RGB_3600.fits`
 - 元画像のサンプリング：0.1°/画素（6分角）。作者の最高解像度版とは異なります。
 - 出力：1200 dpi の補間画像。画素数を増やしても、観測情報の解像度は増えません。
-- `output/*-linear-G.npy`：表示用変換前の再投影済み32ビット浮動小数点データ。上下左右はPNGと同じ。
-- `output/provenance.json`：原画像のSHA-256、URL、投影式、設定、区画ごとの強度統計。
-- `output/source-fits-header.txt`：元のFITSヘッダー。
 
 **利用条件：教育利用についても作者がライセンス案内を設けています。** ダウンロード可能であることは、上映・公開配布の許諾を意味しません。この作業では許諾取得・作者への連絡は行っていません。部の上映や外部配布の前に、[作者の利用条件](https://milkywaysky.com/licenses.html)を確認し、必要な許諾を取得してください。
 
@@ -242,7 +223,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest -v tests.test_mellinger_ohp
 ```
 
-元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/` 内の同名生成物を更新します。
+元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/mellinger-ohp-plates.pdf` を更新します。
 
 `galaxyconfig.properties` で原盤までの距離・出力倍率・解像度・濃淡を変更できます。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`gingaforge/galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
 

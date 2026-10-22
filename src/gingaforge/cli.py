@@ -12,7 +12,7 @@ def main(argv=None):
         epilog="方式別の設定・オプション: gingaforge {ohp,gaia-etch} --help",
     )
     parser.add_argument("mode", choices=("ohp", "gaia-etch"),
-                        help="ohp: Mellinger全天画像 / gaia-etch: Gaia DR3光量")
+                        help="ohp: Mellinger全天画像のPDF / gaia-etch: Gaia DR3光量のSVG・PDF")
     parser.add_argument("options", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if args.mode == "gaia-etch":
@@ -20,7 +20,3 @@ def main(argv=None):
     else:
         from .ohp import main as generate
     return generate(args.options)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

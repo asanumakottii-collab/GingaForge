@@ -1,6 +1,6 @@
-"""Gaia DR3のG帯光量を読む。ネットワーク取得は明示指定時だけ行う。
+"""Gaia DR3のG帯光量マップを読む。ネットワーク取得は明示指定時だけ行う。
 
-個別星CSV、またはESA TAPで集計した光量マップを入力する。
+ESA TAPで銀経・銀緯ビンごとに集計した光量をキャッシュし、検証してから読み込む。
 集計は恒星数ではなく SUM(10**(-0.4*(G-reference)))。
 参考: https://www.cosmos.esa.int/web/gaia-users/archive/programmatic-access
 Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
@@ -21,19 +21,10 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+from .config import positive_number
 from .models import SpherePosition
 
 TAP_URL = "https://gea.esac.esa.int/tap-server/tap"
-
-
-def positive_number(props, key, default, *, allow_zero=False):
-    try:
-        value = float(props.get(key, default))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{key}: 数値を指定してください。") from exc
-    if not math.isfinite(value) or (value < 0 if allow_zero else value <= 0):
-        raise ValueError(f"{key}: 有限の{'0以上' if allow_zero else '正'}の数値が必要です。")
-    return value
 
 
 @dataclass(frozen=True)
@@ -93,81 +84,40 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
-def _read_csv(path):
-    opener = gzip.open if str(path).endswith(".gz") else open
-    return opener(path, "rt", encoding="utf-8-sig", newline="")
+def iter_flux_samples(settings, regions, latitude_limit):
+    """(ICRS位置, 基準等級に対する光量)をストリームで返す。
 
-
-def iter_flux_samples(settings, regions, latitude_limit, stats):
-    """(ICRS位置, 基準等級に対する光量, 恒星数)をストリームで返す。
-
-    生CSVは source_id,ra,dec,phot_g_mean_mag が必要。重複IDは拒否する。
     キャッシュはmanifestの条件とチェックサムを照合してから読む。
     """
     path = settings.path
-    stats.update(rows=0, stars=0, filtered_stars=0)
-    if path.is_dir():
-        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-        expected = settings.provenance(regions, latitude_limit)
-        if manifest.get("selection") != expected or not manifest.get("complete"):
-            raise ValueError("Gaiaキャッシュの等級・集計幅・担当領域が設定と一致しません。--download-gaia で再取得してください。")
-        files = manifest.get("files", [])
-        if [entry["name"] for entry in files] != [f"region-{i}.csv.gz" for i in range(len(regions))]:
-            raise ValueError("Gaiaキャッシュの領域ファイル一覧が不正です。")
-        for entry in files:
-            if file_sha256(path / entry["name"]) != entry["sha256"]:
-                raise ValueError(f"Gaiaキャッシュのチェックサムが一致しません: {entry['name']}")
-        stats["provenance"] = manifest
-        for entry in files:
-            with _read_csv(path / entry["name"]) as stream:
-                reader = csv.DictReader(stream)
-                if reader.fieldnames != ["l", "b", "relative_flux", "source_count"]:
-                    raise ValueError("Gaia集計CSVの列が不正です。")
-                for row in reader:
-                    lon, lat, flux = (float(row[k]) for k in ("l", "b", "relative_flux"))
-                    count = int(row["source_count"])
-                    if not all(math.isfinite(x) for x in (lon, lat, flux)) or flux <= 0 or count <= 0:
-                        raise ValueError("Gaia集計CSVに不正な光量・個数があります。")
-                    if not (0 <= lon < 360 and -latitude_limit <= lat <= latitude_limit):
-                        raise ValueError("Gaia集計CSVの座標が領域外です。")
-                    stats["rows"] += 1
-                    stats["stars"] += count
-                    yield SpherePosition.from_galactic(lon, lat), flux, count
-        return
-    if not path.is_file():
+    manifest_path = path / "manifest.json"
+    if not manifest_path.is_file():
         raise FileNotFoundError(
-            f"Gaiaデータがありません: {path}\n"
-            "同じ設定で --download-gaia を付けて実行するか、galaxy.gaia.input にGaia CSVを指定してください。"
+            f"Gaiaキャッシュがありません: {path}\n"
+            "同じ設定で --download-gaia を付けて実行してください。"
         )
-    stats["provenance"] = {"file": str(path), "sha256": file_sha256(path), "band": "G",
-                           "selection": settings.provenance(regions, latitude_limit),
-                           "coverage": "user-supplied; completeness not verified"}
-    ids = set()
-    with _read_csv(path) as stream:
-        reader = csv.DictReader(stream)
-        if not {"source_id", "ra", "dec", "phot_g_mean_mag"}.issubset(reader.fieldnames or []):
-            raise ValueError("Gaia CSVには source_id,ra,dec,phot_g_mean_mag 列が必要です。")
-        for line_number, row in enumerate(reader, 2):
-            try:
-                source_id = int(row["source_id"])
-                ra, dec, mag = (float(row[k]) for k in ("ra", "dec", "phot_g_mean_mag"))
-                if source_id <= 0 or not all(math.isfinite(v) for v in (ra, dec, mag)):
-                    raise ValueError("非有限値または不正なID")
-                if not 0 <= ra < 360 or not -90 <= dec <= 90:
-                    raise ValueError("座標範囲外")
-                if source_id in ids:
-                    raise ValueError(f"source_id重複: {source_id}")
-                ids.add(source_id)
-            except (ValueError, TypeError, KeyError) as exc:
-                raise ValueError(f"{path}:{line_number}: Gaiaレコード不正 ({exc})") from exc
-            stats["rows"] += 1
-            if not settings.bright < mag <= settings.faint:
-                stats["filtered_stars"] += 1
-                continue
-            position = SpherePosition()
-            position.radeg, position.dedeg = ra, dec
-            stats["stars"] += 1
-            yield position, 10 ** (-0.4 * (mag - settings.reference)), 1
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected = settings.provenance(regions, latitude_limit)
+    if manifest.get("selection") != expected or not manifest.get("complete"):
+        raise ValueError("Gaiaキャッシュの等級・集計幅・担当領域が設定と一致しません。--download-gaia で再取得してください。")
+    files = manifest.get("files", [])
+    if [entry["name"] for entry in files] != [f"region-{i}.csv.gz" for i in range(len(regions))]:
+        raise ValueError("Gaiaキャッシュの領域ファイル一覧が不正です。")
+    for entry in files:
+        if file_sha256(path / entry["name"]) != entry["sha256"]:
+            raise ValueError(f"Gaiaキャッシュのチェックサムが一致しません: {entry['name']}")
+    for entry in files:
+        with gzip.open(path / entry["name"], "rt", encoding="utf-8", newline="") as stream:
+            reader = csv.DictReader(stream)
+            if reader.fieldnames != ["l", "b", "relative_flux", "source_count"]:
+                raise ValueError("Gaia集計CSVの列が不正です。")
+            for row in reader:
+                lon, lat, flux = (float(row[k]) for k in ("l", "b", "relative_flux"))
+                if not all(math.isfinite(x) for x in (lon, lat, flux)) or flux <= 0:
+                    raise ValueError("Gaia集計CSVに不正な光量があります。")
+                if not (0 <= lon < 360 and -latitude_limit <= lat <= latitude_limit):
+                    raise ValueError("Gaia集計CSVの座標が領域外です。")
+                yield SpherePosition.from_galactic(lon, lat), flux
 
 
 def _request(url, data=None):
@@ -266,8 +216,6 @@ def _votable_to_csv(source, target, settings, region, latitude_limit):
 
 def download_gaia(settings, regions, latitude_limit):
     """4領域を別々に取得。条件一致・検証済みの領域は再利用する。"""
-    if settings.path.suffix in {".csv", ".gz"}:
-        raise ValueError("ダウンロード時のgalaxy.gaia.inputにはキャッシュディレクトリを指定してください。")
     directory = settings.path
     directory.mkdir(parents=True, exist_ok=True)
     queries = build_queries(settings, regions, latitude_limit)

@@ -26,15 +26,12 @@ import numpy as np
 
 
 class MathVector:
-    """数学ベクトル。x, y, z 成分は可変（原コードが直接書き換えるため）。"""
+    """数学ベクトル。"""
 
     __slots__ = ("_v",)
 
     def __init__(self, x=0.0, y=0.0, z=0.0):
-        if isinstance(x, MathVector):
-            self._v = x._v.copy()
-        else:
-            self._v = np.array([x, y, z], dtype=float)
+        self._v = np.array([x, y, z], dtype=float)
 
     @staticmethod
     def from_mag_lng_lat(mag, lng, lat):
@@ -43,33 +40,23 @@ class MathVector:
                            mag * math.sin(lng) * math.cos(lat),
                            mag * math.sin(lat))
 
+    @staticmethod
+    def _of(v):
+        result = MathVector()
+        result._v = v
+        return result
+
     @property
     def x(self):
         return float(self._v[0])
-
-    @x.setter
-    def x(self, value):
-        self._v[0] = value
 
     @property
     def y(self):
         return float(self._v[1])
 
-    @y.setter
-    def y(self, value):
-        self._v[1] = value
-
     @property
     def z(self):
         return float(self._v[2])
-
-    @z.setter
-    def z(self, value):
-        self._v[2] = value
-
-    def get_mag(self):
-        """極座標のrを取得します。"""
-        return float(np.linalg.norm(self._v))
 
     def get_lng(self):
         """極座標の経度を取得します。"""
@@ -79,32 +66,21 @@ class MathVector:
         """極座標の緯度を取得します。"""
         return math.atan2(self.z, math.hypot(self.x, self.y))
 
-    def __eq__(self, other):
-        if not isinstance(other, MathVector):
-            return NotImplemented
-        return bool(np.array_equal(self._v, other._v))
-
     def plus(self, operand):
         """このベクトルに指定されたベクトルを加算したベクトルを作成します。"""
-        result = MathVector()
-        result._v = self._v + operand._v
-        return result
+        return self._of(self._v + operand._v)
 
     def minus(self, operand):
         """このベクトルに指定されたベクトルを減算したベクトルを作成します。"""
-        result = MathVector()
-        result._v = self._v - operand._v
-        return result
+        return self._of(self._v - operand._v)
 
     def mult_scalar(self, operand):
         """このベクトルを指定されたスカラー倍したベクトルを作成します。"""
-        result = MathVector()
-        result._v = self._v * operand
-        return result
+        return self._of(self._v * operand)
 
     def unit_vector(self):
         """このベクトルの単位ベクトルを作成します。"""
-        return self.mult_scalar(1.0 / self.get_mag())
+        return self.mult_scalar(1.0 / float(np.linalg.norm(self._v)))
 
     def dot(self, operand):
         """このベクトルの内積を計算します。"""
@@ -112,37 +88,8 @@ class MathVector:
 
     def cross(self, operand):
         """このベクトルの外積を計算します。"""
-        result = MathVector()
-        result._v = np.cross(self._v, operand._v)
-        return result
-
-    def ang(self, v):
-        """このベクトルと指定されたベクトルのなす角度を計算します。"""
-        cos_theta = self.dot(v) / self.get_mag() / v.get_mag()
-        try:
-            return math.acos(cos_theta)
-        except ValueError:
-            # Java の Math.acos は定義域外の入力に対して例外を投げず NaN を返す。
-            # NaN を用いた比較(<, >, <=, >=)は常にFalseになる点も含めて挙動を揃える。
-            return math.nan
-
-    def project(self, v):
-        """指定されたベクトルの方向をz方向としたときに、このベクトルをxy平面に投影したベクトルを作成します。"""
-        return self.minus(v.mult_scalar(self.dot(v) / v.dot(v)))
-
-    def reflect(self, v=None):
-        """
-        v が指定されている場合は、v の方向をz方向としたときにxy平面に関して対称に配置したベクトルを、指定されていない場合は原点に関して対称に配置したベクトルを作成します。
-        """
-        if v is None:
-            result = MathVector()
-            result._v = -self._v
-            return result
-        return self.minus(v.mult_scalar(self.dot(v) * 2 / v.dot(v)))
+        return self._of(np.cross(self._v, operand._v))
 
     def transform(self, v):
         """指定されたベクトルの方向をx, y, z方向としたベクトルを作成します。"""
         return MathVector(self.dot(v[0]), self.dot(v[1]), self.dot(v[2]))
-
-    def __repr__(self):
-        return f"[{self.x}, {self.y}, {self.z}]"

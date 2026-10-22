@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import os,unicodedata;p=os.getcwd\\(\\);print\\(p==unicodedata.normalize\\('NFD',p\\), p==unicodedata.normalize\\('NFC',p\\)\\)\")",
+      "Read(//Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/source/**)",
+      "Read(//Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/source/gaia/**)",
+      "Read(//Library/Frameworks/Python.framework/Versions/3.14/bin/**)",
+      "Read(//Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/**)",
+      "Bash(../../../.venv/bin/python -c \"import numpy, sys; print\\(numpy.__version__, sys.version\\)\")",
+      "Bash(../../../.venv/bin/python -c \"import scipy; print\\(scipy.__version__\\)\")",
+      "Bash(../../../.venv/bin/python -m pip list)",
+      "Bash(../../../.venv/bin/python /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/render_svg.py output_inverse/galaxy/gaia-etch-0.svg /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/before)",
+      "Bash(python3 -c ' *)",
+      "Bash(../../../.venv/bin/python /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/render_svg.py /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/out_auto/galaxy/gaia-etch-0.svg /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/auto1)",
+      "Bash(time PYTHONPATH=src ../../../.venv/bin/python -m gingaforge gaia-etch -f /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/auto.properties)",
+      "Bash(PYTHONPATH=src ../../../.venv/bin/python /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/packing.py)",
+      "Bash(PYTHONPATH=src ../../../.venv/bin/python /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/analyze.py /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/auto.properties output_inverse/galaxy/gaia-etch-0.svg /private/tmp/claude-501/-Users-asanumawatarushi-Documents------------GingaForge--claude-worktrees-gaia-dr3-lattice-pattern-68690f/6f660752-0fc8-49d0-a12f-24f355e6da1f/scratchpad/a2)",
+      "Bash(../../../../../../../../Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/.venv/bin/python -c ' *)",
+      "Bash(/Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/.venv/bin/python -V)",
+      "Bash(PYTHONPATH=src timeout 600 ../../../.venv/bin/python -m unittest discover -s tests -t .)",
+      "Bash(PYTHONPATH=src ../../../.venv/bin/python -m unittest discover -s tests -t .)"
+    ]
+  }
+}

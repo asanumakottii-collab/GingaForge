@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Javaのプロパティファイル形式(key = value, '#'または'!'で始まる行はコメント)を読み込むユーティリティ。"""
 
+import math
 from pathlib import Path
 
 # 同梱の設定ファイル・source・outputを置くリポジトリのルート（src/gingaforge から2階層上）。
@@ -21,3 +22,13 @@ def load_properties(path):
                     props[key.strip()] = value.strip()
                     break
     return props
+
+
+def positive_number(props, key, default, *, allow_zero=False):
+    try:
+        value = float(props.get(key, default))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key}: 数値を指定してください。") from exc
+    if not math.isfinite(value) or (value < 0 if allow_zero else value <= 0):
+        raise ValueError(f"{key}: 有限の{'0以上' if allow_zero else '正'}の数値が必要です。")
+    return value
