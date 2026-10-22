@@ -1,5 +1,4 @@
 from pathlib import Path
-import shutil
 import tempfile
 import unittest
 from unittest import mock
@@ -9,7 +8,7 @@ from astropy.io import fits
 from pypdf import PdfReader
 from pypdf.generic import ContentStream
 
-from gingaforge import ohp
+from gingaforge import ohp, starnet_setup
 from gingaforge.config import PROJECT_ROOT as ROOT
 from gingaforge.ohp import (REGIONS, read_config, geometry, plate_to_sky,
                             celestial_wcs, bilinear, reproject, tone_map, build,
@@ -145,7 +144,7 @@ class StarRemovalChecks(unittest.TestCase):
         self.assertAlmostEqual((result - 100.).sum(), 200. + cap, delta=1.)
         self.assertLess(result[300, 1000] - 100., 200. / 10)   # spread over the 0.3 deg glow
 
-    @unittest.skipUnless(shutil.which('starnet2'), 'StarNet2 is not installed')
+    @unittest.skipUnless(starnet_setup.ready(), 'StarNet2 is not installed or its license is not accepted')
     def test_starnet_separates_stars_and_keeps_shape(self):
         image = channel_mix(fits.getdata(ROOT / self.cfg['source-fits'])[:, 644:1156, 1288:2312], self.cfg)
         starless = starnet(image, self.cfg)

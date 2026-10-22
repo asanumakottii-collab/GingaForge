@@ -13,7 +13,10 @@ Python 3.11以上を使用し、このフォルダで次を実行します。
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'   # requirements.txt と同じ
 
-# OHPフィルム: FITSから2ページの原盤PDFを生成（星の除去に StarNet2 が必要）
+# OHPフィルム: 星の除去に使う StarNet2 を公式配布元から tools/starnet2/ に導入（初回のみ、利用条件への同意あり）
+.venv/bin/gingaforge install-starnet
+
+# OHPフィルム: FITSから2ページの原盤PDFを生成
 .venv/bin/gingaforge ohp
 
 # Gaiaエッチング: 保存済みキャッシュからSVG原盤を生成
@@ -72,14 +75,16 @@ gaia-etch.properties       Gaia用設定（金属エッチング）
 gaia-ohp.properties        Gaia用設定（OHPフィルム印刷、天の川強調あり）
 src/gingaforge/            ライブラリ本体
 source/                    入力データ（FITS、Hipparcos星表、Gaiaキャッシュ）
+tools/starnet2/            install-starnet で導入した StarNet2（gitの対象外、再配布しない）
 output/                    生成物（方式・白黒反転ごとのフォルダ）
 tests/                     テスト
 ```
 
 | モジュール（`src/gingaforge/`） | 役割 |
 |---|---|
-| `cli.py` | OHP / Gaiaの共通コマンド（`gingaforge`） |
+| `cli.py` | OHP / Gaia / StarNet2導入の共通コマンド（`gingaforge`） |
 | `ohp.py` | FITSの色の混合、星の除去（StarNet2・Hipparcos）、再投影、階調変換、OHP原盤PDF |
+| `starnet_setup.py` | StarNet2 の検索、公式配布元からの導入、利用条件への同意の確認 |
 | `gaia_etch.py` | Gaia原盤の生成 |
 | `galaxy_geometry.py` | 共通領域定義、Gaiaの円筒投影・逆投影 |
 | `gaia_catalog.py` | Gaia DR3光量マップの取得・キャッシュ検証 |
@@ -269,7 +274,26 @@ pixel = round(255 × v^(1 / display-gamma))
 - OTLの `star.excluding`（個別に除外したHIP番号）は反映しません。OTLで除外した星も原盤から除かれます。
 - `star-removal = none` にすると、星を除かず点のまま残します（StarNet2 も星表も使いません）。黒点は210前後が目安です。
 
-StarNet2（Nikita Misiura）はこのリポジトリに含まれません。各自でインストールし、`starnet2` がPATH上にない場合は `starnet-command` にパスを書いてください。利用条件は StarNet2 に同梱の LICENSE.txt に従います（天体写真の画像処理のための利用が許諾されています）。
+### StarNet2 の導入
+
+StarNet2（Mikita (Nikita) Misiura）は利用条件で再配布・同梱が禁止されているため、このリポジトリには含めません。代わりに `gingaforge install-starnet` が、利用条件で認められた方法（公式配布元から直接ダウンロード）で、このフォルダの `tools/starnet2/` に導入します。`tools/starnet2/` は git の対象外です。コミットしたり、他の場所から配ったりしないでください。
+
+```sh
+# 公式の最新版フィード（https://starnetastro.com/cli-tools/latest.json）から今のOS向けのZIPを取得
+.venv/bin/gingaforge install-starnet
+
+# 公式サイトから手で取得したZIP、またはそれを展開したフォルダから導入
+.venv/bin/gingaforge install-starnet --from ~/Downloads/starnet2_macos-arm64_2.6.2-0242_COREML_arm64_cli
+```
+
+- **ダウンロードの検証**：フィードのURLが公式配布元（`starnetastro.com`、`download.starnetastro.com`）であることを確かめます。ダウンロードしたZIPは、フィードのサイズとSHA-256で照合してから展開します。展開先の外を指すZIPの項目は拒否します。
+- **利用条件への同意**：利用条件は、使う前に全文（配布物の `LICENSE.txt`）を示し、同意を得ます。同意した条文のSHA-256を `tools/starnet2/accepted-licenses.json` に記録するので、同じ条文には一度だけ同意すればよく、条文が改訂されたら同意し直します。対話できない環境では、全文を読んだうえで `--accept-starnet-license` を付けます（`gingaforge ohp` にも同じオプションがあります）。同意しなければ導入も使用もしません。
+- **使う実行ファイルの順番**：設定 `starnet-command` が空欄なら、①`tools/starnet2/` に導入したもの、②PATH 上の `starnet2` の順に探します。特定の StarNet2 を使う場合は `starnet-command` にパスを書きます。どれも見つからないとき、`gingaforge ohp` は対話できる端末なら導入するかを尋ね、対話できない環境では導入方法を示して止まります。
+- **実行時の表示**：使った StarNet2 の版とパスを表示し、PDF の見出しにも StarNet2 を使ったことを書きます。
+
+利用条件では、StarNet2 の出力を機械学習の学習に使うことや、他のソフトウェアの開発・テストの素材・基準結果に使うことも禁止されています。テストは StarNet2 をその場で動かすだけで、出力を正解データとして保存しません。
+
+初期設定の原盤は StarNet2 2.6.2 で生成しています。2.5.3 で生成した前の版との差は、PDFの画素値で平均1.2（0〜255）でした。
 
 ### データと解像度
 
@@ -290,11 +314,12 @@ StarNet2（Nikita Misiura）はこのリポジトリに含まれません。各�
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
+.venv/bin/gingaforge install-starnet
 .venv/bin/gingaforge ohp
-.venv/bin/python -m unittest -v tests.test_mellinger_ohp
+.venv/bin/python -m unittest -v tests.test_mellinger_ohp tests.test_starnet_setup
 ```
 
-元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/mellinger-ohp/mellinger-ohp-plates.pdf` を更新します。StarNet2 の実行を含め、全体で約40秒かかります。StarNet2 がない環境では、StarNet2 を実際に動かすテストは飛ばされます。
+元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/mellinger-ohp/mellinger-ohp-plates.pdf` を更新します。StarNet2 の実行を含め、全体で約40秒かかります。StarNet2 がない、または利用条件に同意していない環境では、StarNet2 を実際に動かすテストは飛ばされます。導入処理のテストは、StarNet2 の代わりの小さなスクリプトと偽のフィードで行い、通信しません。
 
 `mellinger-ohp.properties` で色の混合比・星の除去・原盤までの距離・出力倍率・解像度・濃淡を変更できます（各項目の説明はファイル内のコメントを参照）。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`gingaforge/galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
 

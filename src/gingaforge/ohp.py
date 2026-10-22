@@ -9,7 +9,6 @@ import argparse
 import configparser
 import gzip
 import math
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -23,6 +22,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+from . import starnet_setup
 from .config import PROJECT_ROOT, output_directory
 from .galaxy_geometry import REGIONS
 from .models import SpherePosition
@@ -91,11 +91,10 @@ def gaussian_blur(image, sigma):
     return sum(k * padded[:, i:i + image.shape[1]] for i, k in enumerate(kernel))
 
 
-def starnet(image, cfg):
+def starnet(image, cfg, accept_license=False):
     """StarNet2で星を除いた画像を返す。可逆なasinh変換で16ビットTIFFにして渡し、出力を元の強度に戻す。"""
-    command = shutil.which(cfg.get("starnet-command"))
-    if command is None:
-        raise FileNotFoundError(f"StarNet2 not found: {cfg.get('starnet-command')} (set star-removal = none to skip)")
+    command = starnet_setup.prepare(cfg.get("starnet-command"), accept=accept_license)
+    print(f"Separating stars with StarNet2 {starnet_setup.version(command)}: {command}", flush=True)
     scale = np.arcsinh(STARNET_RANGE / STARNET_SOFTENING)
     stretched = np.arcsinh(np.clip(image, 0, STARNET_RANGE) / STARNET_SOFTENING) / scale
     with tempfile.TemporaryDirectory() as directory:
@@ -142,7 +141,7 @@ def star_disks(shape, x, y, radius):
     return mask
 
 
-def remove_projected_stars(image, wcs, cfg, config_directory):
+def remove_projected_stars(image, wcs, cfg, config_directory, accept_license=False):
     """恒星投影機・1等星投影機が映す星を除き、それより暗い星の光をぼかして天の川の光に戻す。"""
     limit = cfg.getfloat("star-catalog-limit-mag")
     radius0 = cfg.getfloat("star-mask-radius-deg")
@@ -161,7 +160,7 @@ def remove_projected_stars(image, wcs, cfg, config_directory):
     radius = (radius0 + growth * (limit - vmag)) / pixel
     # Star cores above STARNET_RANGE include single-pixel spikes; clipping keeps them out of the faint-star glow.
     clipped = np.clip(image, 0, STARNET_RANGE)
-    starless = starnet(clipped, cfg)
+    starless = starnet(clipped, cfg, accept_license)
     keep = (~star_disks(image.shape, x, y, radius)).astype(np.float64)
     # The source was downsampled bilinearly, so a sharp star lands in one pixel at its peak brightness and
     # its pixel value varies tens of times between stars of the same magnitude; the cap keeps that out of the glow.
@@ -257,7 +256,7 @@ def caption(cfg):
     weights = ":".join(f"{w:g}" for w in channel_weights(cfg))
     text = f"Mellinger 2009, B:G:R = {weights}"
     if cfg.get("star-removal") == "starnet":
-        text += f", HIP V <= {cfg.getfloat('star-catalog-limit-mag'):g} removed"
+        text += f", StarNet2 + HIP V <= {cfg.getfloat('star-catalog-limit-mag'):g} removed"
     return text
 
 
@@ -277,7 +276,7 @@ def make_master(path, images, cfg):
     c.save()
 
 
-def milky_way_image(config_path, cfg):
+def milky_way_image(config_path, cfg, accept_starnet_license=False):
     """再投影前の全天画像（色の混合・星の除去済み）とそのWCSを返す。"""
     source = config_path.parent / cfg["source-fits"]
     data = fits.getdata(source)
@@ -287,19 +286,19 @@ def milky_way_image(config_path, cfg):
     image = channel_mix(data, cfg)
     removal = cfg.get("star-removal")
     if removal == "starnet":
-        image = remove_projected_stars(image, wcs, cfg, config_path.parent)
+        image = remove_projected_stars(image, wcs, cfg, config_path.parent, accept_starnet_license)
     elif removal != "none":
         raise ValueError("star-removal must be starnet or none")
     return image, wcs
 
 
-def build(config_path):
+def build(config_path, accept_starnet_license=False):
     """設定ファイルに従ってOHP原盤PDFを生成し、そのパスを返します。"""
     config_path = Path(config_path).resolve()
     cfg = read_config(config_path)
     output = output_directory(config_path)
     geometry(cfg)
-    image, wcs = milky_way_image(config_path, cfg)
+    image, wcs = milky_way_image(config_path, cfg, accept_starnet_license)
     images = {name: Image.fromarray(tone_map(reproject(image, wcs, start, end, cfg), cfg))
               for name, (start, end) in REGIONS.items()}
     output.mkdir(parents=True, exist_ok=True)
@@ -312,5 +311,8 @@ def build(config_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-f", "--config", type=Path, default=PROJECT_ROOT / "mellinger-ohp.properties")
-    build(parser.parse_args(argv).config)
+    parser.add_argument("--accept-starnet-license", action="store_true",
+                        help="StarNet2 の利用条件（同梱の LICENSE.txt）に同意する（対話できない環境用）")
+    args = parser.parse_args(argv)
+    build(args.config, args.accept_starnet_license)
     return 0
