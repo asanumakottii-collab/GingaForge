@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,10 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class IntegrationTests(unittest.TestCase):
-    def run_command(self, *args, cwd):
+    def run_command(self, *args, cwd, timeout=60):
         env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
         return subprocess.run([sys.executable, "-m", "gingaforge", *args],
-                              cwd=cwd, env=env, text=True, capture_output=True, timeout=60)
+                              cwd=cwd, env=env, text=True, capture_output=True, timeout=timeout)
 
     def test_shared_projection_matches_ohp_in_all_four_regions(self):
         from gingaforge.ohp import plate_to_sky
@@ -55,11 +56,18 @@ class IntegrationTests(unittest.TestCase):
             configs = root / 'configs'
             configs.mkdir()
             (configs / 'sky.fits').symlink_to(ROOT / 'source/mwpan2_RGB_3600.fits')
+            (configs / 'stars.dat.gz').symlink_to(ROOT / 'source/hip_main.dat.gz')
             config = configs / 'ohp.properties'
             text = (ROOT / 'mellinger-ohp.properties').read_text()
             text = text.replace('source/mwpan2_RGB_3600.fits', 'sky.fits').replace('raster-dpi = 1200', 'raster-dpi = 72')
+            text = text.replace('source/hip_main.dat.gz', 'stars.dat.gz')
+            if shutil.which('starnet2'):
+                # Without 2x upsampling StarNet2 takes about half as long; quality is not checked here.
+                text = text.replace('starnet-upsample = yes', 'starnet-upsample = no')
+            else:
+                text = text.replace('star-removal = starnet', 'star-removal = none')
             config.write_text(text)
-            result = self.run_command('ohp', '--config', str(config), cwd=root)
+            result = self.run_command('ohp', '--config', str(config), cwd=root, timeout=300)
             self.assertEqual(0, result.returncode, result.stderr)
             output = configs / 'output/ohp'
             self.assertFalse((root / 'output').exists())
