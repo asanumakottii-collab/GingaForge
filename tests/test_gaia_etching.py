@@ -257,7 +257,7 @@ class GaiaCommandTests(unittest.TestCase):
             with (patch("builtins.input", side_effect=AssertionError("unexpected prompt")),
                   patch("sys.stdout", new_callable=StringIO)):
                 self.assertEqual(0, main(["-f", str(config)]))
-            output = Path(directory) / "output" / "gaia-etch" / "inverted"
+            output = Path(directory) / "output" / "galaxy" / "inverted"
             pages = sorted(output.glob("*.svg"))
             self.assertEqual(2, len(pages))
             self.assertEqual(pages, sorted(output.iterdir()))
@@ -268,9 +268,9 @@ class GaiaCommandTests(unittest.TestCase):
     def test_missing_input_does_not_overwrite_existing_output(self):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
-            output = Path(directory) / "output" / "gaia-etch" / "inverted"
+            output = Path(directory) / "output" / "galaxy" / "inverted"
             output.mkdir(parents=True)
-            sentinel = output / "gaia-etch-0.svg"
+            sentinel = output / "galaxy-0.svg"
             sentinel.write_text("existing plate")
             (Path(directory) / "gaia" / "manifest.json").unlink()
             with patch("sys.stdout", new_callable=StringIO), patch("sys.stderr", new_callable=StringIO):
@@ -283,7 +283,7 @@ class GaiaCommandTests(unittest.TestCase):
             config = self.config_and_input(directory)
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-PDF", "-f", str(config)]))
-            pages = sorted((Path(directory) / "output" / "gaia-etch" / "inverted").glob("*.pdf"))
+            pages = sorted((Path(directory) / "output" / "galaxy" / "inverted").glob("*.pdf"))
             self.assertEqual(2, len(pages))
             self.assertEqual(["N0", "S0"], PdfReader(pages[0]).pages[0].extract_text().split())
 

@@ -40,11 +40,10 @@ class IntegrationTests(unittest.TestCase):
             configs = root / 'configs'
             write_cache(configs / 'cache', {0: [(30.05, .05, .01, 1)]})
             config = configs / 'custom.properties'
-            config.write_text('galaxy.gaia.input=cache\n'
-                              'galaxy.gaia.file.prefix=custom-\nplate.frame-size=60\ncolor.invert=y\n')
+            config.write_text('galaxy.gaia.input=cache\nplate.frame-size=60\ncolor.invert=y\n')
             result = self.run_command('gaia-etch', '--pdf', '-f', str(config), cwd=root)
             self.assertEqual(0, result.returncode, result.stderr)
-            output = configs / 'output/gaia-etch/inverted'
+            output = configs / 'output/custom/inverted'
             self.assertFalse((root / 'output').exists())
             self.assertEqual(['custom-0.pdf', 'custom-1.pdf'], sorted(p.name for p in output.iterdir()))
             self.assertEqual(['N0', 'S0'], PdfReader(output / 'custom-0.pdf').pages[0].extract_text().split())
@@ -57,15 +56,15 @@ class IntegrationTests(unittest.TestCase):
             configs.mkdir()
             (configs / 'sky.fits').symlink_to(ROOT / 'source/mwpan2_RGB_3600.fits')
             config = configs / 'ohp.properties'
-            text = (ROOT / 'galaxyconfig.properties').read_text()
+            text = (ROOT / 'mellinger-ohp.properties').read_text()
             text = text.replace('source/mwpan2_RGB_3600.fits', 'sky.fits').replace('raster-dpi = 1200', 'raster-dpi = 72')
             config.write_text(text)
             result = self.run_command('ohp', '--config', str(config), cwd=root)
             self.assertEqual(0, result.returncode, result.stderr)
             output = configs / 'output/ohp'
             self.assertFalse((root / 'output').exists())
-            self.assertEqual(['mellinger-ohp-plates.pdf'], [p.name for p in output.iterdir()])
-            self.assertEqual(2, len(PdfReader(output / 'mellinger-ohp-plates.pdf').pages))
+            self.assertEqual(['ohp-plates.pdf'], [p.name for p in output.iterdir()])
+            self.assertEqual(2, len(PdfReader(output / 'ohp-plates.pdf').pages))
 
     def test_cli_help_and_invalid_options(self):
         with tempfile.TemporaryDirectory() as directory:

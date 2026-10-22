@@ -113,7 +113,7 @@ class GalaxyOutputTests(unittest.TestCase):
                         props = {"scale": "2"}
                         if configured is not None:
                             props["plate.frame-size"] = configured
-                        with _init_plate_writer(props, directory, pdf) as writer:
+                        with _init_plate_writer(props, Path(directory, "gaia-etch.properties"), pdf) as writer:
                             self.assertEqual(expected, writer.r)
                             writer.write_frames(2)
                         if not pdf:
@@ -122,21 +122,22 @@ class GalaxyOutputTests(unittest.TestCase):
                                     self.assertEqual(f"{expected * 2}mm", rect.get("width"))
                                     self.assertEqual(f"{expected * 2}mm", rect.get("height"))
 
-    def test_color_invert_selects_output_folder(self):
+    def test_config_name_and_color_invert_select_output(self):
         for value, folder in (("no", "normal"), ("yes", "inverted"), ("y", "inverted")):
             with self.subTest(value=value):
-                writer = _init_plate_writer({"color.invert": value}, "configs")
-                self.assertEqual(Path("configs", "output", "gaia-etch", folder), writer.output_dir)
+                writer = _init_plate_writer({"color.invert": value}, Path("configs", "gaia-ohp.properties"))
+                self.assertEqual(Path("configs", "output", "gaia-ohp", folder), writer.output_dir)
+                self.assertEqual("gaia-ohp-", writer.filename_prefix)
 
     def test_invalid_frame_size_is_rejected(self):
         for value in ("-1", "nan", "inf"):
             with self.subTest(value=value):
                 with self.assertRaisesRegex(ValueError, "plate.frame-size"):
-                    _init_plate_writer({"plate.frame-size": value}, ".")
+                    _init_plate_writer({"plate.frame-size": value}, "gaia-etch.properties")
 
     def test_holes_outside_frame_are_skipped(self):
         with tempfile.TemporaryDirectory() as directory:
-            with _init_plate_writer({}, directory) as writer:
+            with _init_plate_writer({}, Path(directory, "gaia-etch.properties")) as writer:
                 writer.write_frames(2)
                 writer.write_hole(0, 0, writer.r, -writer.r, .01)
                 writer.write_hole(0, 0, writer.r + .01, 0., .01)
@@ -147,7 +148,7 @@ class GalaxyOutputTests(unittest.TestCase):
 
     def test_svg_creates_all_four_frames_without_stars(self):
         with tempfile.TemporaryDirectory() as directory:
-            with _init_plate_writer({}, directory) as writer:
+            with _init_plate_writer({}, Path(directory, "gaia-etch.properties")) as writer:
                 writer.write_frames(2)
             pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.svg"))
             self.assertEqual(["gaia-etch-0.svg", "gaia-etch-1.svg"], [p.name for p in pages])
@@ -162,7 +163,7 @@ class GalaxyOutputTests(unittest.TestCase):
         from pypdf import PdfReader
 
         with tempfile.TemporaryDirectory() as directory:
-            with _init_plate_writer({}, directory, pdf=True) as writer:
+            with _init_plate_writer({}, Path(directory, "gaia-etch.properties"), pdf=True) as writer:
                 writer.write_frames(2)
             pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.pdf"))
             self.assertEqual(2, len(pages))

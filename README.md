@@ -27,7 +27,7 @@ python3 -m venv .venv
 # 別の設定ファイルを使用
 .venv/bin/gingaforge gaia-etch -f gaia-etch.properties
 
-# Gaia星表からOHPフィルム印刷用の原盤（天の川強調あり）を output/gaia-etch/inverted/ に生成
+# Gaia星表からOHPフィルム印刷用の原盤（天の川強調あり）を output/gaia-ohp/inverted/ に生成
 .venv/bin/gingaforge gaia-etch -PDF -f gaia-ohp.properties
 
 # テスト
@@ -40,19 +40,23 @@ python3 -m venv .venv
 
 | 方式 | 設定ファイル | 入力 | 出力 |
 |---|---|---|---|
-| `ohp` | `galaxyconfig.properties` | `source/mwpan2_RGB_3600.fits` | `output/ohp/mellinger-ohp-plates.pdf` |
-| `gaia-etch` | `gaia-etch.properties` | `source/gaia/`（`--download-gaia` で取得） | `output/gaia-etch/{normal,inverted}/gaia-etch-*.svg/pdf` |
-| `gaia-etch`（OHPフィルム） | `gaia-ohp.properties`（天の川強調あり） | `source/gaia/` | `output/gaia-etch/inverted/gaia-etch-*.svg/pdf` |
+| `ohp` | `mellinger-ohp.properties` | `source/mwpan2_RGB_3600.fits` | `output/mellinger-ohp/mellinger-ohp-plates.pdf` |
+| `gaia-etch` | `gaia-etch.properties` | `source/gaia/`（`--download-gaia` で取得） | `output/gaia-etch/normal/gaia-etch-*.svg/pdf` |
+| `gaia-etch`（OHPフィルム） | `gaia-ohp.properties`（天の川強調あり） | `source/gaia/` | `output/gaia-ohp/inverted/gaia-ohp-*.svg/pdf` |
 
-設定ファイルを省略した場合は、リポジトリ直下の同梱設定を使用します。
-出力先は設定では指定せず、設定ファイルと同じフォルダの `output/` 以下に方式別に保存します。
+設定ファイルを省略した場合は、`ohp` は `mellinger-ohp.properties`、`gaia-etch` は `gaia-etch.properties` を使用します。
+出力先は設定では指定せず、設定ファイルと同じフォルダの `output/<設定ファイル名>/` に保存します。
+ファイル名の接頭辞も設定ファイル名です。Gaia方式はさらに `color.invert` で `normal/` と `inverted/` に分けます。
 
 ```
 output/
-  ohp/                 OHP原盤PDF
-  gaia-etch/normal/    Gaia原盤（color.invert = no: 白地に黒穴）
-  gaia-etch/inverted/  Gaia原盤（color.invert = yes: 黒地に白穴）
+  mellinger-ohp/       mellinger-ohp.properties の出力（OHP原盤PDF）
+  gaia-etch/normal/    gaia-etch.properties の出力（color.invert = no: 白地に黒穴）
+  gaia-ohp/inverted/   gaia-ohp.properties の出力（color.invert = yes: 黒地に白穴）
 ```
+
+設定ごとに出力フォルダが分かれるため、ある設定の生成が別の設定の原盤を上書きすることはありません。
+同じGaia設定で `color.invert` を切り替えた場合も、`normal/` と `inverted/` の両方が残ります。
 
 両方式のN0/N1/S0/S1の銀経領域を `gingaforge/galaxy_geometry.py` に集約しています。
 中心配置では円筒投影の向きと座標が一致します。Gaiaは偏心投影機にも対応し、OHPは中心配置のみです。
@@ -62,7 +66,7 @@ OHPの緑チャンネルとGaiaのG帯は異なる観測量のため、それぞ
 
 ```
 pyproject.toml             パッケージ定義（`gingaforge` コマンド）
-galaxyconfig.properties    OHP用設定
+mellinger-ohp.properties   Mellinger用設定（OHPフィルム印刷）
 gaia-etch.properties       Gaia用設定（金属エッチング）
 gaia-ohp.properties        Gaia用設定（OHPフィルム印刷、天の川強調あり）
 src/gingaforge/            ライブラリ本体
@@ -85,7 +89,7 @@ tests/                     テスト
 
 ## Gaiaエッチング原盤の担当領域
 
-`gaia-etch.properties` の `plate.frame-size` で、正方形原盤の一辺を出力上のmmで指定できます。OHP用の `galaxyconfig.properties` とは独立した設定です。例えば `100` なら100 × 100 mmの枠になります。`0` または省略時は用紙サイズと配置数から自動計算し、標準配置では138.5 × 138.5 mmです。`scale` は枠サイズには掛かりません。SVG / PDFに適用され、Gaiaの穴配置も指定した枠内に制限されます。
+`gaia-etch.properties` の `plate.frame-size` で、正方形原盤の一辺を出力上のmmで指定できます。Mellinger用の `mellinger-ohp.properties` とは独立した設定です。例えば `100` なら100 × 100 mmの枠になります。`0` または省略時は用紙サイズと配置数から自動計算し、標準配置では138.5 × 138.5 mmです。`scale` は枠サイズには掛かりません。SVG / PDFに適用され、Gaiaの穴配置も指定した枠内に制限されます。
 
 `GalaxyTransformer` は星表のICRS赤道座標を銀河座標へ変換し、**銀緯 −20度以上 +20度以下**の星を次の4枚に割り当てます。銀経は0度以上360度未満に正規化し、共有する境界上の星が重複しないよう、各区間の下端を含み上端を含めません。
 
@@ -126,7 +130,7 @@ Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で
 | 設定 | 同梱設定の値 | 意味 |
 |---|---:|---|
 | `galaxy.etch.min-hole-diameter-mm` | 0.02 | 最終原盤での最小穴直径。すべての穴にこの径を使用 |
-| `galaxy.etch.min-web-mm` | 0.2 | 穴の縁と縁の間に残す金属の最小幅 |
+| `galaxy.etch.min-web-mm` | 0.02 | 穴の縁と縁の間に残す金属の最小幅 |
 | `galaxy.etch.cell-size-mm` | 0.4 | 原盤で光量を合計するセル幅。穴径＋金属幅の整数倍に切り下げ |
 | `galaxy.etch.flux-gain` | 0.05 | 全領域共通の光量倍率（穴面積の合計に掛ける）。微光星増加による飽和を抑える初期値 |
 | `galaxy.etch.seed` | 0 | セル内の穴の選択を再現する乱数種 |
@@ -153,8 +157,9 @@ Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で
 実効的な細かさは取得ビン・原盤セル・投影光学系で制限されます。
 
 Gaiaモードは星座線を加工用原盤へ追加せず、入力待ちなしで生成します。
-`output/gaia-etch/normal/`（`color.invert = yes` なら `inverted/`）の `gaia-etch-0.svg` と `gaia-etch-1.svg`（`-PDF`指定時はPDF）に計4原盤を出力し、
-接頭辞は `galaxy.gaia.file.prefix` で変更できます。
+`gaia-etch.properties` なら `output/gaia-etch/normal/`（`color.invert = yes` なら `inverted/`）の
+`gaia-etch-0.svg` と `gaia-etch-1.svg`（`-PDF`指定時はPDF）に計4原盤を出力します。
+フォルダ名とファイル名の接頭辞は設定ファイル名から決まります。
 穴面積と投影光量の比例は均一照明・薄板を仮定しており、板厚、光源、エッチング精度、
 投影時のぼけによる影響は別途試作・測定してください。最小寸法を満たすことは加工成功の保証ではありません。
 
@@ -168,14 +173,14 @@ GaiaデータはESA/Gaia/DPACによります。発表等では[Gaiaの謝辞・�
 同梱の `gaia-etch.properties` は移行前の調整値を引き継いでいます。枠は60 mm四方、
 基準穴半径は0.1 mm、`color.invert = no`（白地に黒穴）です。
 `color.invert = yes` なら黒地に白穴になります。OHPの138.5 mm枠とは独立しています。
-既存ファイルを更新せず試す場合は、設定ファイルを別フォルダにコピーして `-f` で指定してください。
-そのフォルダの `output/` に出力されます（`galaxy.gaia.input` は絶対パスにしてください）。
+既存の原盤を更新せず試す場合は、設定ファイルを同じフォルダに別名でコピーし（例: `gaia-test.properties`）、
+`-f` で指定してください。`output/gaia-test/` に出力されるため、既存の原盤は上書きされません。
 
 ### OHPフィルム印刷用のGaia原盤と天の川強調
 
 金属エッチングでは0.02 mmの穴を加工できないため、同じ穴の原盤をOHPフィルムに印刷して使います。
 `gaia-ohp.properties` は穴径0.02 mm・穴の間隔0.02 mm・セル0.2 mm、60 mm枠、黒地に白穴
-（黒いインクが遮光、穴が透過）で `output/gaia-etch/inverted/` に出力し、次の天の川強調を有効にしています。
+（黒いインクが遮光、穴が透過）で `output/gaia-ohp/inverted/` に出力し、次の天の川強調を有効にしています。
 
 G帯の光量をそのまま穴面積にすると、銀河面に集中しない7.5〜12等程度の前景星が光量の大半を占め、
 天の川中心（|b| = 2〜5°）と外側（|b| = 15〜20°）の明るさの比は約2.7倍しかありません
@@ -202,7 +207,7 @@ Axel Mellinger の科学用全天パノラマ FITS を銀河座標で再投影�
 
 ### 印刷するファイル
 
-`output/ohp/mellinger-ohp-plates.pdf`：A4、2ページ。1ページ目は N0 / S0、2ページ目は N1 / S1。黒い正方形は 138.5 mm 四方。各区画は8ビットグレースケール画像で、物理寸法を正確に指定して配置しています。
+`output/mellinger-ohp/mellinger-ohp-plates.pdf`：A4、2ページ。1ページ目は N0 / S0、2ページ目は N1 / S1。黒い正方形は 138.5 mm 四方。各区画は8ビットグレースケール画像で、物理寸法を正確に指定して配置しています。
 
 | 区画 | 銀経 l | 銀緯 b | 紙面の上 → 下 |
 |---|---|---|---|
@@ -266,11 +271,12 @@ python3 -m venv .venv
 .venv/bin/python -m unittest -v tests.test_mellinger_ohp
 ```
 
-元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/ohp/mellinger-ohp-plates.pdf` を更新します。
+元画像がない場合は、上記URLから別途取得して `source/mwpan2_RGB_3600.fits` に置いてください。スクリプトは自動取得しません。再生成では `output/mellinger-ohp/mellinger-ohp-plates.pdf` を更新します。
 
-`galaxyconfig.properties` で原盤までの距離・出力倍率・解像度・濃淡を変更できます。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`gingaforge/galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
+`mellinger-ohp.properties` で原盤までの距離・出力倍率・解像度・濃淡を変更できます（各項目の説明はファイル内のコメントを参照）。原盤の物理寸法を変えたい場合は `plate-distance-mm` を変更します。`print-scale` を変えるとPDF上の画像寸法も変わりますが、黒枠と配置は固定です。指定した銀経区画は`gingaforge/galaxy_geometry.py` の `REGIONS` に記録しています。投影機が偏心する構成には未対応で、設定すると明示的にエラーにします。
 
-入力の相対パスと出力先 `output/ohp/` は、`--config` で指定した設定ファイルの所在フォルダを基準にします。
+入力の相対パスと出力先 `output/<設定ファイル名>/` は、`--config` で指定した設定ファイルの所在フォルダを基準にします。
+出力ファイル名は `<設定ファイル名>-plates.pdf` です。
 
 ## コードのライセンス
 
