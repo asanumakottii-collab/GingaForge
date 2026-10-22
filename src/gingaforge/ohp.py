@@ -1,14 +1,23 @@
-"""Mellinger全天画像の緑成分を中心配置の円筒投影へ再投影し、OHPフィルム用の原盤PDFを生成する。"""
+"""Mellinger全天画像を中心配置の円筒投影へ再投影し、OHPフィルム用の原盤PDFを生成する。
+
+FITSの青・緑・赤を重み付きで混ぜ、StarNet2で星と天の川の光に分ける。恒星投影機・1等星投影機が
+映すHipparcosの星（V等級が上限以下）は除き、それより暗い星の光はぼかして天の川の光に戻す。
+"""
 from __future__ import annotations
 
 import argparse
 import configparser
+import gzip
 import math
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
+from astropy.wcs.utils import proj_plane_pixel_scales
 from PIL import Image
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -16,6 +25,11 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from .config import PROJECT_ROOT, output_directory
 from .galaxy_geometry import REGIONS
+from .models import SpherePosition
+
+# StarNet2へ渡す16ビット画像の可逆なasinh変換。上限を超えるのは明るい星の芯だけ。
+STARNET_RANGE = 20000.
+STARNET_SOFTENING = 50.
 
 
 def read_config(path):
@@ -50,6 +64,121 @@ def celestial_wcs(header):
     if "RADECSYS" in h:
         h["RADESYS"] = h.pop("RADECSYS")
     return WCS(h, naxis=2)
+
+
+def channel_weights(cfg):
+    weights = np.array([float(w) for w in cfg.get("channel-weights").split(",")])
+    if weights.shape != (3,) or not np.all(np.isfinite(weights)) or np.any(weights < 0) or weights.sum() <= 0:
+        raise ValueError("channel-weights must be three non-negative numbers (blue, green, red)")
+    return weights / weights.sum()
+
+
+def channel_mix(cube, cfg):
+    """FITSの3面を重み付き平均する。面の順は青・緑・赤（アンタレスとシャウラの色で確認）。"""
+    return np.tensordot(channel_weights(cfg), cube.astype(np.float64), axes=1)
+
+
+def gaussian_blur(image, sigma):
+    """σ（画素）のガウスぼかし。全天画像なので経度方向は360度でつなぎ、緯度方向は端で折り返す。"""
+    if sigma == 0:
+        return image.copy()
+    r = math.ceil(3 * sigma)
+    kernel = np.exp(-.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    kernel /= kernel.sum()
+    padded = np.pad(image, ((r, r), (0, 0)), mode="reflect")
+    image = sum(k * padded[i:i + image.shape[0]] for i, k in enumerate(kernel))
+    padded = np.pad(image, ((0, 0), (r, r)), mode="wrap")
+    return sum(k * padded[:, i:i + image.shape[1]] for i, k in enumerate(kernel))
+
+
+def starnet(image, cfg):
+    """StarNet2で星を除いた画像を返す。可逆なasinh変換で16ビットTIFFにして渡し、出力を元の強度に戻す。"""
+    command = shutil.which(cfg.get("starnet-command"))
+    if command is None:
+        raise FileNotFoundError(f"StarNet2 not found: {cfg.get('starnet-command')} (set star-removal = none to skip)")
+    scale = np.arcsinh(STARNET_RANGE / STARNET_SOFTENING)
+    stretched = np.arcsinh(np.clip(image, 0, STARNET_RANGE) / STARNET_SOFTENING) / scale
+    with tempfile.TemporaryDirectory() as directory:
+        source, starless = Path(directory) / "input.tif", Path(directory) / "starless.tif"
+        Image.fromarray(np.rint(stretched * 65535).astype(np.uint16)).save(source)
+        upsample = ["-u"] if cfg.getboolean("starnet-upsample") else []
+        subprocess.run([command, "-q", *upsample, "-i", str(source), "-o", str(starless)], check=True)
+        result = np.asarray(Image.open(starless), dtype=np.float64) / 65535
+    if result.shape != image.shape:
+        raise ValueError("StarNet2 returned an image of a different size")
+    return STARNET_SOFTENING * np.sinh(result * scale)
+
+
+def read_hipparcos(path, limit):
+    """hip_main.dat（.gzも可）から、V等級が limit 以下の星の (赤経, 赤緯, V) を度で返す。
+
+    OTLの恒星原盤と同じ欄（V: 42–46桁、ICRS・J1991.25の赤経・赤緯: 52–63桁と65–76桁）を読む。
+    OTLと同じく、等級か位置が空欄の星は投影されないので含めない。
+    """
+    opener = gzip.open if Path(path).suffix == ".gz" else open
+    stars = []
+    with opener(path, "rt", encoding="ascii") as f:
+        for line in f:
+            vmag, ra, dec = line[41:46], line[51:63], line[64:76]
+            if vmag.strip() and ra.strip() and dec.strip() and float(vmag) <= limit:
+                stars.append((float(ra), float(dec), float(vmag)))
+    return np.array(stars).reshape(-1, 3)
+
+
+def icrs_to_galactic(ra, dec):
+    position = SpherePosition()
+    position.radeg, position.dedeg = ra, dec
+    return position.to_galactic()
+
+
+def star_disks(shape, x, y, radius):
+    """画素座標 (x, y) を中心とする半径 radius（画素）の円の和集合。経度方向は360度でつなぐ。"""
+    mask = np.zeros(shape, bool)
+    for cx, cy, r in zip(x, y, radius):
+        rows = np.arange(max(0, math.floor(cy - r)), min(shape[0], math.ceil(cy + r) + 1))
+        cols = np.arange(math.floor(cx - r), math.ceil(cx + r) + 1)
+        inside = (rows[:, None] - cy) ** 2 + (cols[None, :] - cx) ** 2 <= r * r
+        mask[np.ix_(rows, cols % shape[1])] |= inside
+    return mask
+
+
+def remove_projected_stars(image, wcs, cfg, config_directory):
+    """恒星投影機・1等星投影機が映す星を除き、それより暗い星の光をぼかして天の川の光に戻す。"""
+    limit = cfg.getfloat("star-catalog-limit-mag")
+    radius0 = cfg.getfloat("star-mask-radius-deg")
+    growth = cfg.getfloat("star-mask-growth-deg-per-mag")
+    halo_limit = cfg.getfloat("halo-fill-limit-mag")
+    blur = cfg.getfloat("faint-star-blur-deg")
+    cap = cfg.getfloat("faint-star-cap")
+    weight = cfg.getfloat("faint-star-weight")
+    if not (radius0 > 0 and growth >= 0 and blur >= 0 and cap > 0 and 0 <= weight <= 1):
+        raise ValueError("Invalid star removal settings")
+    catalog = read_hipparcos(config_directory / cfg["star-catalog"], limit)
+    longitude, latitude = np.array([icrs_to_galactic(ra, dec) for ra, dec, _ in catalog]).reshape(-1, 2).T
+    x, y = wcs.world_to_pixel_values(longitude, latitude)
+    pixel = float(np.mean(proj_plane_pixel_scales(wcs)))
+    vmag = catalog[:, 2]
+    radius = (radius0 + growth * (limit - vmag)) / pixel
+    # Star cores above STARNET_RANGE include single-pixel spikes; clipping keeps them out of the faint-star glow.
+    clipped = np.clip(image, 0, STARNET_RANGE)
+    starless = starnet(clipped, cfg)
+    keep = (~star_disks(image.shape, x, y, radius)).astype(np.float64)
+    # The source was downsampled bilinearly, so a sharp star lands in one pixel at its peak brightness and
+    # its pixel value varies tens of times between stars of the same magnitude; the cap keeps that out of the glow.
+    faint = np.minimum(clipped - starless, cap) * keep
+    # Inside the removed discs the glow takes the local average of the fainter stars around them.
+    sigma = blur / pixel
+    glow = gaussian_blur(faint, sigma) / np.maximum(gaussian_blur(keep, sigma), 1e-12) if sigma else faint
+    # StarNet2 leaves a faint halo around the brightest stars; refill it from the surroundings with a soft edge.
+    bright = vmag <= halo_limit
+    halo = star_disks(image.shape, x[bright], y[bright], 1.5 * radius[bright]).astype(np.float64)
+    if halo.any():
+        outside = 1. - halo
+        spread = max(1., 1.5 * float(radius[bright].max()) / 2)
+        filled = gaussian_blur(starless * outside, spread) / np.maximum(gaussian_blur(outside, spread), 1e-12)
+        starless = starless + np.clip(gaussian_blur(halo, 1.), 0, 1) * (filled - starless)
+    print(f"Removed {len(vmag)} Hipparcos stars with V <= {limit:g} (all sky); fainter stars blurred by {blur:g} deg", flush=True)
+    return starless + weight * glow
 
 
 def bilinear(data, x, y):
@@ -99,7 +228,7 @@ def tone_map(values, cfg):
     return np.rint(255 * z ** (1 / gamma)).astype(np.uint8)
 
 
-def draw_plate(c, name, region, image, width, height, cy):
+def draw_plate(c, name, region, image, width, height, cy, caption):
     cx, side = 105., 138.5
     c.setFillColorRGB(0, 0, 0)
     c.rect((cx - side / 2) * mm, (cy - side / 2) * mm, side * mm, side * mm, fill=1, stroke=0)
@@ -110,7 +239,7 @@ def draw_plate(c, name, region, image, width, height, cy):
     c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 9) * mm, name)
     c.setFont("Helvetica", 8)
     c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 15) * mm,
-                 f"l = {region[0]:.0f} to {region[1]:.0f} deg   |   Mellinger 2009, G")
+                 f"l = {region[0]:.0f} to {region[1]:.0f} deg   |   {caption}")
     c.drawCentredString(cx * mm, (cy + height / 2 + 4) * mm, f"l = {region[1]:.0f} deg")
     c.drawCentredString(cx * mm, (cy - height / 2 - 6) * mm, f"l = {region[0]:.0f} deg")
     c.drawCentredString(cx * mm, (cy - side / 2 + 9) * mm, "LEFT: -b     RIGHT: +b     WHITE: CLEAR FILM")
@@ -124,6 +253,14 @@ def draw_plate(c, name, region, image, width, height, cy):
             c.line(px * mm, (py - 1) * mm, px * mm, (py + 1) * mm)
 
 
+def caption(cfg):
+    weights = ":".join(f"{w:g}" for w in channel_weights(cfg))
+    text = f"Mellinger 2009, B:G:R = {weights}"
+    if cfg.get("star-removal") == "starnet":
+        text += f", HIP V <= {cfg.getfloat('star-catalog-limit-mag'):g} removed"
+    return text
+
+
 def make_master(path, images, cfg):
     _, bmax, scale, _, width, height = geometry(cfg)
     c = canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
@@ -131,7 +268,7 @@ def make_master(path, images, cfg):
     c.setAuthor("Source sky image: Axel Mellinger (2009)")
     for names in [("N0", "S0"), ("N1", "S1")]:
         for name, cy in zip(names, [222.75, 74.25]):
-            draw_plate(c, name, REGIONS[name], images[name], width, height, cy)
+            draw_plate(c, name, REGIONS[name], images[name], width, height, cy, caption(cfg))
         c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica", 6)
         c.drawCentredString(105 * mm, 148 * mm,
@@ -140,19 +277,30 @@ def make_master(path, images, cfg):
     c.save()
 
 
-def build(config_path):
-    """設定ファイルに従ってOHP原盤PDFを生成し、そのパスを返します。"""
-    config_path = Path(config_path).resolve()
-    cfg = read_config(config_path)
+def milky_way_image(config_path, cfg):
+    """再投影前の全天画像（色の混合・星の除去済み）とそのWCSを返す。"""
     source = config_path.parent / cfg["source-fits"]
-    output = output_directory(config_path)
-    geometry(cfg)
     data = fits.getdata(source)
     if data.shape != (3, 1800, 3600):
         raise ValueError("Expected the Mellinger 3600 x 1800 RGB cube")
     wcs = celestial_wcs(fits.getheader(source))
-    # The middle plane of the RGB cube is green; it is not Gaia's broad G band.
-    images = {name: Image.fromarray(tone_map(reproject(data[1], wcs, start, end, cfg), cfg))
+    image = channel_mix(data, cfg)
+    removal = cfg.get("star-removal")
+    if removal == "starnet":
+        image = remove_projected_stars(image, wcs, cfg, config_path.parent)
+    elif removal != "none":
+        raise ValueError("star-removal must be starnet or none")
+    return image, wcs
+
+
+def build(config_path):
+    """設定ファイルに従ってOHP原盤PDFを生成し、そのパスを返します。"""
+    config_path = Path(config_path).resolve()
+    cfg = read_config(config_path)
+    output = output_directory(config_path)
+    geometry(cfg)
+    image, wcs = milky_way_image(config_path, cfg)
+    images = {name: Image.fromarray(tone_map(reproject(image, wcs, start, end, cfg), cfg))
               for name, (start, end) in REGIONS.items()}
     output.mkdir(parents=True, exist_ok=True)
     path = output / f"{config_path.stem}-plates.pdf"
