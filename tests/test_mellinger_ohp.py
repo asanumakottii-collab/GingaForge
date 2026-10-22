@@ -15,7 +15,7 @@ from gingaforge.ohp import (REGIONS, read_config, geometry, plate_to_sky,
 class MasterChecks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.cfg = read_config(ROOT / 'galaxyconfig.properties')
+        cls.cfg = read_config(ROOT / 'mellinger-ohp.properties')
         cls.wcs = celestial_wcs(fits.getheader(ROOT / cls.cfg['source-fits']))
 
     def test_requested_regions_and_default_dimensions(self):
@@ -43,7 +43,7 @@ class MasterChecks(unittest.TestCase):
         self.assertAlmostEqual(y0, 899.950013387949, places=6)
 
     def test_reprojection_samples_pixel_centers(self):
-        cfg = read_config(ROOT / 'galaxyconfig.properties')
+        cfg = read_config(ROOT / 'mellinger-ohp.properties')
         cfg['raster-dpi'] = '72'
         data = fits.getdata(ROOT / cfg['source-fits'])[1]
         p, _, scale, _, width, height = geometry(cfg)
@@ -63,7 +63,7 @@ class MasterChecks(unittest.TestCase):
     def test_pdf_pages_labels_and_image_dimensions(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'ohp.properties'
-            text = (ROOT / 'galaxyconfig.properties').read_text()
+            text = (ROOT / 'mellinger-ohp.properties').read_text()
             text = text.replace('source/mwpan2_RGB_3600.fits', str(ROOT / 'source/mwpan2_RGB_3600.fits'))
             config.write_text(text.replace('raster-dpi = 1200', 'raster-dpi = 72'))
             reader = PdfReader(build(config))

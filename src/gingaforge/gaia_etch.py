@@ -46,22 +46,22 @@ def _init_galaxy_transformer(props):
     return GalaxyTransformer(radius, sphere * scale, horizontal * scale, vertical * scale, plate * scale)
 
 
-def _init_plate_writer(props, config_directory, pdf=False):
+def _init_plate_writer(props, config_path, pdf=False):
     column = int(props.get("plate.column", 1))
     row = int(props.get("plate.row", 1))
     frame_size = positive_number(props, "plate.frame-size", 0., allow_zero=True)
-    filename_prefix = props.get("galaxy.gaia.file.prefix", "gaia-etch-")
     invert_color = props.get("color.invert", "no").strip().lower() in {"y", "yes", "true"}
-    # 白地に黒穴（normal）と黒地に白穴（inverted）は別フォルダに出力する。
-    output_dir = output_directory(config_directory, "gaia-etch", "inverted" if invert_color else "normal")
+    # output/<設定ファイル名>/ の下で、白地に黒穴（normal）と黒地に白穴（inverted）を分ける。
+    output_dir = output_directory(config_path, "inverted" if invert_color else "normal")
     writer_class = PlateWriterPDF if pdf else PlateWriterSVG
-    return writer_class(column, row, frame_size / 2, filename_prefix, invert_color, output_dir)
+    return writer_class(column, row, frame_size / 2, f"{Path(config_path).stem}-", invert_color, output_dir)
 
 
 def generate(config_path, pdf=False, download=False):
     """設定ファイルに従ってGaia原盤を生成し、出力フォルダを返します。"""
+    config_path = Path(config_path).resolve()
     props = load_properties(config_path)
-    directory = Path(config_path).resolve().parent
+    directory = config_path.parent
     gaia = GaiaSettings.from_properties(props, directory)
     etching = EtchingSettings.from_properties(props)
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
@@ -69,7 +69,7 @@ def generate(config_path, pdf=False, download=False):
     if download:
         download_gaia(gaia, regions, limit)
     # 読み込み・配置に失敗したとき、既存原盤を途中結果で上書きしない。
-    writer = _init_plate_writer(props, directory, pdf)
+    writer = _init_plate_writer(props, config_path, pdf)
     builder = EtchingBuilder(transformer, etching, writer.r)
     print(f"Gaia G={gaia.bright:g}より暗く{gaia.faint:g}以下の光量を集計します。", flush=True)
     for position, flux in iter_flux_samples(gaia, regions, limit):

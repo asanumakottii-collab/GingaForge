@@ -24,9 +24,10 @@ def load_properties(path):
     return props
 
 
-def output_directory(config_directory, *parts):
-    """生成物の保存先。設定ファイルと同じフォルダの ``output/`` 配下に方式別に分ける。"""
-    return Path(config_directory).joinpath("output", *parts)
+def output_directory(config_path, *parts):
+    """生成物の保存先。設定ファイルと同じフォルダの ``output/<設定ファイル名>/`` に、設定ごとに分ける。"""
+    config_path = Path(config_path)
+    return config_path.parent.joinpath("output", config_path.stem, *parts)
 
 
 def positive_number(props, key, default, *, allow_zero=False):

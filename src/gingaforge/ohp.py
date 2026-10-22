@@ -142,10 +142,10 @@ def make_master(path, images, cfg):
 
 def build(config_path):
     """設定ファイルに従ってOHP原盤PDFを生成し、そのパスを返します。"""
+    config_path = Path(config_path).resolve()
     cfg = read_config(config_path)
-    directory = Path(config_path).resolve().parent
-    source = directory / cfg["source-fits"]
-    output = output_directory(directory, "ohp")
+    source = config_path.parent / cfg["source-fits"]
+    output = output_directory(config_path)
     geometry(cfg)
     data = fits.getdata(source)
     if data.shape != (3, 1800, 3600):
@@ -155,7 +155,7 @@ def build(config_path):
     images = {name: Image.fromarray(tone_map(reproject(data[1], wcs, start, end, cfg), cfg))
               for name, (start, end) in REGIONS.items()}
     output.mkdir(parents=True, exist_ok=True)
-    path = output / "mellinger-ohp-plates.pdf"
+    path = output / f"{config_path.stem}-plates.pdf"
     make_master(path, images, cfg)
     print("Created", path, flush=True)
     return path
@@ -163,6 +163,6 @@ def build(config_path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-f", "--config", type=Path, default=PROJECT_ROOT / "galaxyconfig.properties")
+    parser.add_argument("-f", "--config", type=Path, default=PROJECT_ROOT / "mellinger-ohp.properties")
     build(parser.parse_args(argv).config)
     return 0
