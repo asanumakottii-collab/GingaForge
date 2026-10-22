@@ -2,6 +2,7 @@
 
 穴は個々の恒星ではなく局所的な合計光量の標本。全穴を同じ直径にし、
 固定ピッチの候補格子の一部を選ぶことで、原盤全体の最小金属幅を保証する。
+天の川強調を有効にすると、背景に相当する一様な明るさを差し引いてから穴を配置する。
 Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
 """
 
@@ -10,6 +11,9 @@ from array import array
 from dataclasses import dataclass
 import math
 import random
+
+import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 from .config import positive_number
 
@@ -39,6 +43,12 @@ class EtchingSettings:
     flux_gain: float = 1.
     seed: int = 0
     scale: float = 1.
+    # 天の川強調。既定は無効で、光量に比例した従来の穴面積になる。
+    milky_way: bool = False
+    milky_way_black_percentile: float = 40.
+    milky_way_anchor_percentile: float = 95.
+    milky_way_gamma: float = 1.
+    milky_way_smoothing_mm: float = 1.
 
     @classmethod
     def from_properties(cls, props):
@@ -55,7 +65,16 @@ class EtchingSettings:
             raise ValueError("galaxy.etch.cell-size-mm は最小穴径＋最小金属幅以上にしてください。")
         if cell / (diameter + web) > 100:
             raise ValueError("1セルの候補点が多すぎます。cell-size-mm / (穴径+金属幅) <= 100 としてください。")
-        return cls(diameter, web, cell, gain, seed, scale)
+        milky_way = props.get("galaxy.etch.milky-way", "no").strip().lower() in {"y", "yes", "true"}
+        black = positive_number(props, "galaxy.etch.milky-way.black-percentile", 40., allow_zero=True)
+        anchor = positive_number(props, "galaxy.etch.milky-way.anchor-percentile", 95.)
+        gamma = positive_number(props, "galaxy.etch.milky-way.gamma", 1.)
+        smoothing = positive_number(props, "galaxy.etch.milky-way.smoothing-mm", 1.)
+        if not black < anchor <= 100:
+            raise ValueError("galaxy.etch.milky-way: 0 <= black-percentile < anchor-percentile <= 100 としてください。")
+        if smoothing / cell > 50:
+            raise ValueError("galaxy.etch.milky-way.smoothing-mm は cell-size-mm の50倍以下にしてください。")
+        return cls(diameter, web, cell, gain, seed, scale, milky_way, black, anchor, gamma, smoothing)
 
 
 class EtchingBuilder:
@@ -71,6 +90,7 @@ class EtchingBuilder:
         self.reference_area = math.pi * transformer.radius ** 2 * settings.flux_gain
         self.frame_radius = frame_radius
         self.cells = defaultdict(float)
+        self.milky_way = None
 
     def add_sample(self, position, relative_flux):
         if not math.isfinite(relative_flux) or relative_flux < 0:
@@ -96,20 +116,85 @@ class EtchingBuilder:
                     continue
                 yield x, y
 
+    def _solid_angle_deg2(self, unit, ix, iy):
+        """セルが天球上で占める立体角（平方度）。偏心投影機でもドーム中心から見た空の広さ。"""
+        x, y = (ix + .5) * self.cell, (iy + .5) * self.cell
+        center = self.transformer.inverse_transform_unit(x, y, *unit).to_vector(1.)
+        right = self.transformer.inverse_transform_unit(x + self.cell, y, *unit).to_vector(1.)
+        below = self.transformer.inverse_transform_unit(x, y + self.cell, *unit).to_vector(1.)
+        normal = right.minus(center).cross(below.minus(center))
+        return math.sqrt(normal.dot(normal)) * math.degrees(1.) ** 2
+
+    def _enhance_milky_way(self):
+        """背景に相当する一様な明るさを差し引き、天の川を残す倍率をセルの光量に掛ける。
+
+        倍率は中央値で平滑化した表面輝度Sから T(S)/S とする。孤立した明るい星は中央値に
+        影響せず、元のセル光量に倍率を掛けるので天の川内部の暗黒帯などの細部は残る。
+        """
+        s = self.settings
+        half = max(0, math.ceil((s.milky_way_smoothing_mm * s.scale / self.cell - 1) / 2 - 1e-6))
+        window = 2 * half + 1
+        keys, smoothed = [], []
+        for region in range(len(self.transformer.LONGITUDE_REGIONS)):
+            unit = divmod(region, 2)
+            unit_keys = [key for key in self.cells if key[:2] == unit]
+            if not unit_keys:
+                continue
+            ix = np.array([key[2] for key in unit_keys])
+            iy = np.array([key[3] for key in unit_keys])
+            ix, iy = ix - ix.min(), iy - iy.min()
+            # データのないセルはNaNとして中央値から除く。
+            grid = np.full((ix.max() + 1 + 2 * half, iy.max() + 1 + 2 * half), np.nan)
+            grid[ix + half, iy + half] = [self.cells[key] / self._solid_angle_deg2(unit, *key[2:])
+                                          for key in unit_keys]
+            view = sliding_window_view(grid, (window, window))
+            values = np.empty(len(unit_keys))
+            for start in range(0, len(unit_keys), 4096):
+                part = slice(start, start + 4096)
+                values[part] = np.nanmedian(view[ix[part], iy[part]], axis=(1, 2))
+            keys += unit_keys
+            smoothed.append(values)
+        smoothed = np.concatenate(smoothed)
+        # 4原盤共通の黒点・基準点。原盤ごとの自動露出はしない。
+        black, anchor = np.percentile(smoothed, [s.milky_way_black_percentile,
+                                                 s.milky_way_anchor_percentile])
+        if not anchor > black:
+            raise ValueError("天の川強調: 明るさの分布が一様で黒点と基準点が一致します。"
+                             "black-percentileとanchor-percentileを見直してください。")
+        target = anchor * np.clip((smoothed - black) / (anchor - black), 0, None) ** s.milky_way_gamma
+        gains = np.divide(target, smoothed, out=np.zeros_like(target), where=smoothed > 0)
+        cells = {key: self.cells[key] * gain for key, gain in zip(keys, gains.tolist())}
+        return cells, {
+            "smoothing_window_cells": window,
+            # 基準等級の星が1平方度あたり何個分か。
+            "black_level": float(black) / self.reference_area,
+            "anchor_level": float(anchor) / self.reference_area,
+            "dark_cells": int(np.count_nonzero(smoothed <= black)), "cells": len(keys),
+        }
+
     def build(self):
-        """穴と、原盤ごとの ``{plate, holes, requested_area_mm2, capacity_loss_area_mm2}`` を返す。"""
+        """穴と、原盤ごとの ``{plate, holes, linear_area_mm2, requested_area_mm2, capacity_loss_area_mm2}`` を返す。
+
+        天の川強調を使った場合は、黒点・基準点などを ``self.milky_way`` に記録する。
+        ``linear_area_mm2`` は強調前（G帯光量に比例）の要求面積。
+        """
         holes, plates = _Holes(), []
+        if self.settings.milky_way:
+            cells, self.milky_way = self._enhance_milky_way()
+        else:
+            cells, self.milky_way = self.cells, None
         for region in range(len(self.transformer.LONGITUDE_REGIONS)):
             unit = divmod(region, 2)
             rng = random.Random(self.settings.seed + region)
             # 蛇行順の誤差繰越。各セルの誤差は最小穴1個未満、原盤全体では半個以内。
-            keys = sorted((key for key in self.cells if key[:2] == unit),
+            keys = sorted((key for key in cells if key[:2] == unit),
                           key=lambda key: (key[3], key[2] if key[3] % 2 == 0 else -key[2]))
             carry = .5
-            requested = achievable = 0.
+            linear = requested = achievable = 0.
             hole_count = 0
             for key in keys:
-                area = self.cells[key]
+                area = cells[key]
+                linear += self.cells[key]
                 requested += area
                 candidates = list(self._candidates(unit, key[2], key[3]))
                 target = min(area / self.quantum_area, len(candidates))
@@ -122,7 +207,7 @@ class EtchingBuilder:
                 hole_count += number
             plates.append({
                 "plate": ("N" if unit[0] == 0 else "S") + str(unit[1]),
-                "holes": hole_count, "requested_area_mm2": requested,
+                "holes": hole_count, "linear_area_mm2": linear, "requested_area_mm2": requested,
                 "capacity_loss_area_mm2": max(0., requested - achievable),
             })
         return holes, plates
