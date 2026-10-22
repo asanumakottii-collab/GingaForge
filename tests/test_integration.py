@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 
+from gingaforge import starnet_setup
 from gingaforge.galaxy_geometry import GalaxyTransformer, REGIONS
 from gingaforge.models import SpherePosition
 from tests.test_gaia_etching import write_cache
@@ -61,7 +61,7 @@ class IntegrationTests(unittest.TestCase):
             text = (ROOT / 'mellinger-ohp.properties').read_text()
             text = text.replace('source/mwpan2_RGB_3600.fits', 'sky.fits').replace('raster-dpi = 1200', 'raster-dpi = 72')
             text = text.replace('source/hip_main.dat.gz', 'stars.dat.gz')
-            if shutil.which('starnet2'):
+            if starnet_setup.ready():
                 # Without 2x upsampling StarNet2 takes about half as long; quality is not checked here.
                 text = text.replace('starnet-upsample = yes', 'starnet-upsample = no')
             else:
@@ -76,7 +76,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_cli_help_and_invalid_options(self):
         with tempfile.TemporaryDirectory() as directory:
-            for args in (('--help',), ('ohp', '--help'), ('gaia-etch', '--help')):
+            for args in (('--help',), ('ohp', '--help'), ('gaia-etch', '--help'), ('install-starnet', '--help')):
                 result = self.run_command(*args, cwd=directory)
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertIn('usage:', result.stdout)
