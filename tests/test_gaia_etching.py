@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 from io import StringIO
 from unittest.mock import patch
 
-from gingaforge.gaia_catalog import (GaiaSettings, build_queries, iter_flux_samples,
+from gingaforge.gaia_catalog import (GaiaSettings, build_queries, iter_flux_bins, iter_flux_samples,
                           _votable_to_csv, file_sha256)
 from gingaforge.galaxy_etching import EtchingBuilder, EtchingSettings
 from gingaforge.gaia_etch import GalaxyTransformer, main
@@ -134,6 +134,79 @@ class EtchingTests(unittest.TestCase):
         self.assertEqual(4, len(holes))
         self.assertEqual([1] * 4, [p["holes"] for p in plates])
 
+    @staticmethod
+    def uniform_sky(builders, lon, lat, add_point=None):
+        """銀経・銀緯の下端から0.1度のビンを200 x 60個敷き詰め、各ビンに光量1を置く。"""
+        for i in range(200):
+            for j in range(60):
+                edges = (lon + .1 * i, lon + .1 * (i + 1), lat + .1 * j, lat + .1 * (j + 1))
+                for builder in builders:
+                    if builder is add_point:
+                        builder.add_sample(position((edges[0] + edges[1]) / 2, (edges[2] + edges[3]) / 2), 1.)
+                    else:
+                        builder.add_bin(*edges, 1.)
+        return 200 * 60
+
+    @staticmethod
+    def largest_step_between_neighbours(builder):
+        """光量のあるセル（端の3列・3行を除く）で、銀経方向に隣り合うセルの光量の比の最大のずれ。"""
+        cells = builder.cells
+        ixs, iys = sorted({k[2] for k in cells}), sorted({k[3] for k in cells})
+        unit = next(iter(cells))[:2]
+        worst = 0.
+        for ix in ixs[3:-3]:
+            column = [cells.get((*unit, ix, iy)) for iy in iys[3:-3]]
+            worst = max(worst, *(abs(b / a - 1) for a, b in zip(column, column[1:]) if a and b))
+        return worst
+
+    def test_uniform_sky_bins_fill_cells_without_moire(self):
+        # 0.1度のビンは原盤上で約0.087 mm。0.4 mmのセルには4個または5個ずつ入るので、
+        # ビンの中心1点に光量を置くと、一様な空でも隣のセルと5/4倍違う縞ができる。
+        settings = EtchingSettings(cell_mm=.4)
+        area = EtchingBuilder(self.t, settings, 69.25)
+        point = EtchingBuilder(self.t, settings, 69.25)
+        count = self.uniform_sky((area, point), 20., -3., add_point=point)
+        self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
+        self.assertAlmostEqual(.25, self.largest_step_between_neighbours(point), places=9)
+        self.assertLess(self.largest_step_between_neighbours(area), 1e-9)
+        # 銀緯方向も含め、内側のセルはほぼ同じ光量（tan b による伸びの差だけ）。
+        inner = [v for (_, _, ix, iy), v in area.cells.items() if -5 <= ix <= 4 and -20 <= iy <= 19]
+        self.assertLess(max(inner) / min(inner), 1.01)
+
+    def test_uniform_sky_bins_with_projector_offset(self):
+        transformer = GalaxyTransformer(.1, 6500., 355., 200., 50.)
+        area = EtchingBuilder(transformer, EtchingSettings(cell_mm=.4), 69.25)
+        point = EtchingBuilder(transformer, EtchingSettings(cell_mm=.4), 69.25)
+        count = self.uniform_sky((area, point), 80., 10., add_point=point)
+        self.assertEqual({(0, 1)}, {key[:2] for key in area.cells})
+        self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
+        self.assertGreater(self.largest_step_between_neighbours(point), .2)
+        self.assertLess(self.largest_step_between_neighbours(area), .005)
+
+    def test_bin_is_split_by_overlap_area(self):
+        builder = EtchingBuilder(self.t, EtchingSettings(cell_mm=.4), 69.25)
+        # 原盤中心（セルの角）をまたぐビン。x = p tan b、y = -p (l - 30度)。
+        builder.add_bin(29.96, 30.06, -.04, .06, 1.)
+        tan = lambda degrees: math.tan(math.radians(degrees))
+        x_fraction = {-1: tan(.04) / (tan(.04) + tan(.06)), 0: tan(.06) / (tan(.04) + tan(.06))}
+        y_fraction = {-1: .6, 0: .4}
+        expected = {(0, 0, ix, iy): x_fraction[ix] * y_fraction[iy] for ix in (-1, 0) for iy in (-1, 0)}
+        self.assertEqual(set(expected), set(builder.cells))
+        for key, fraction in expected.items():
+            self.assertAlmostEqual(fraction, builder.cells[key] / builder.reference_area, places=9)
+
+    def test_bins_outside_regions_degenerate_and_invalid(self):
+        builder = EtchingBuilder(self.t, self.settings, 69.25)
+        builder.add_bin(150., 150.1, 0., .1, 1.)
+        builder.add_bin(30., 30.1, 20.5, 20.6, 1.)
+        self.assertEqual({}, dict(builder.cells))
+        # 銀緯20度ちょうどの天体だけを集計した幅0のビンは、点として1つのセルに入る。
+        builder.add_bin(30., 30.1, 20., 20., 1.)
+        self.assertEqual(1, len(builder.cells))
+        self.assertAlmostEqual(builder.reference_area, sum(builder.cells.values()))
+        with self.assertRaises(ValueError):
+            builder.add_bin(30., 30.1, 0., .1, -1.)
+
     def test_invalid_manufacturing_settings_fail(self):
         for key, value in (("galaxy.etch.min-hole-diameter-mm", "0"),
                            ("galaxy.etch.min-web-mm", "-1"),
@@ -241,6 +314,27 @@ class GaiaInputTests(unittest.TestCase):
             target.write_bytes(b"broken")
             with self.assertRaises(ValueError):
                 list(iter_flux_samples(settings, ((0, 60),), 20))
+
+    def test_cache_bins_restore_edges_including_clipped_latitude(self):
+        regions = GalaxyTransformer.LONGITUDE_REGIONS
+        cases = (
+            # 0.1度：通常のビンと、銀緯20度ちょうどの天体だけを集計した幅0のビン。
+            (.1, [(30.05, .05), (30.05, -19.95), (30.05, 20.)],
+             [(30., 30.1, 0., .1), (30., 30.1, -20., -19.9), (30., 30.1, 20., 20.)]),
+            # 0.12度：ビンの格子が銀緯±20度にそろわず、両端のビンが切り詰められる。
+            (.12, [(30.06, .06), (30.06, -19.96), (30.06, 19.96)],
+             [(30., 30.12, 0., .12), (30., 30.12, -20., -19.92), (30., 30.12, 19.92, 20.)]),
+        )
+        for step, centres, expected in cases:
+            with self.subTest(step=step), tempfile.TemporaryDirectory() as directory:
+                settings = GaiaSettings(Path(directory), sky_step=step)
+                write_cache(directory, {0: [(l, b, .01, 1) for l, b in centres]}, settings)
+                bins = list(iter_flux_bins(settings, regions, 20))
+                self.assertEqual(len(expected), len(bins))
+                for actual, edges in zip(bins, expected):
+                    for value, edge in zip(actual, edges):
+                        self.assertAlmostEqual(edge, value, places=9)
+                    self.assertAlmostEqual(.01, actual[4])
 
 
 class GaiaCommandTests(unittest.TestCase):

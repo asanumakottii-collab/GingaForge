@@ -2,6 +2,7 @@
 
 穴は個々の恒星ではなく局所的な合計光量の標本。全穴を同じ直径にし、
 固定ピッチの候補格子の一部を選ぶことで、原盤全体の最小金属幅を保証する。
+Gaiaの集計ビンの光量は、原盤上でビンとセルが重なる面積に比例して分配する。
 天の川強調を有効にすると、背景に相当する一様な明るさを差し引いてから穴を配置する。
 Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
 """
@@ -16,6 +17,20 @@ import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 
 from .config import positive_number
+from .models import SpherePosition
+
+
+def _overlaps(start, end, cell):
+    """区間と幅cellのセルの重なりを ``(セル番号, 区間に対する割合)`` で返す。幅0の区間は点として扱う。"""
+    low, high = sorted((start, end))
+    # セル境界にごく近い端は丸め誤差とみなし、隣のセルにわずかな光量を作らない。
+    first = math.floor(low / cell + 1e-9)
+    last = max(first, math.ceil(high / cell - 1e-9) - 1)
+    if first == last:
+        return ((first, 1.),)
+    pieces = [(i, min(high, (i + 1) * cell) - max(low, i * cell)) for i in range(first, last + 1)]
+    total = sum(length for _, length in pieces)
+    return [(i, length / total) for i, length in pieces]
 
 
 class _Holes:
@@ -91,8 +106,10 @@ class EtchingBuilder:
         self.frame_radius = frame_radius
         self.cells = defaultdict(float)
         self.milky_way = None
+        self._corner_unit, self._corners = None, {}
 
     def add_sample(self, position, relative_flux):
+        """点 ``position`` の光量を、その点を含むセルに加える。"""
         if not math.isfinite(relative_flux) or relative_flux < 0:
             raise ValueError("光量は有限の非負値が必要です。")
         pp = self.transformer.transform(position)
@@ -100,6 +117,35 @@ class EtchingBuilder:
             return
         key = (pp.dir, pp.index, math.floor(pp.xmm / self.cell), math.floor(pp.ymm / self.cell))
         self.cells[key] += self.reference_area * relative_flux
+
+    def add_bin(self, lon_min, lon_max, lat_min, lat_max, relative_flux):
+        """銀経・銀緯の範囲（度）に一様に広がる光量を、原盤上で重なる面積に比例してセルへ分配する。
+
+        ビンの中心1点に置くと、ビンとセルの大きさの比が整数でないため、セルごとに入る
+        ビンの数が変わり（例えば4個と5個）、一様な空にも格子状の縞が出る。
+        原盤上のビンの像は、各辺の両端の平均で決まる長方形とみなす（中心配置では厳密）。
+        """
+        if not math.isfinite(relative_flux) or relative_flux < 0:
+            raise ValueError("光量は有限の非負値が必要です。")
+        unit = self.transformer.unit_of_galactic((lon_min + lon_max) / 2, (lat_min + lat_max) / 2)
+        if unit is None:
+            return
+        (x00, y00), (x10, y10), (x01, y01), (x11, y11) = (
+            self._plate_corner(unit, lon, lat) for lat in (lat_min, lat_max) for lon in (lon_min, lon_max))
+        area = self.reference_area * relative_flux
+        for ix, x_fraction in _overlaps((x00 + x10) / 2, (x01 + x11) / 2, self.cell):
+            for iy, y_fraction in _overlaps((y00 + y01) / 2, (y10 + y11) / 2, self.cell):
+                self.cells[(*unit, ix, iy)] += area * x_fraction * y_fraction
+
+    def _plate_corner(self, unit, longitude, latitude):
+        """ビンの角の原盤座標。隣り合うビンが共有する角は1回だけ計算する。"""
+        if unit != self._corner_unit:
+            self._corner_unit, self._corners = unit, {}
+        key = (round(longitude * 1e7), round(latitude * 1e7))
+        if key not in self._corners:
+            pp = self.transformer.transform_unit(SpherePosition.from_galactic(longitude, latitude), *unit)
+            self._corners[key] = pp.xmm, pp.ymm
+        return self._corners[key]
 
     def _candidates(self, unit, ix, iy):
         n = self.sites_per_side

@@ -26,7 +26,7 @@ from pathlib import Path
 import sys
 
 from .config import PROJECT_ROOT, load_properties, output_directory, positive_number
-from .gaia_catalog import GaiaSettings, download_gaia, iter_flux_samples
+from .gaia_catalog import GaiaSettings, download_gaia, iter_flux_bins
 from .galaxy_etching import EtchingBuilder, EtchingSettings
 from .galaxy_geometry import GalaxyTransformer
 from .plate_writer import PlateWriterPDF, PlateWriterSVG
@@ -72,8 +72,8 @@ def generate(config_path, pdf=False, download=False):
     writer = _init_plate_writer(props, config_path, pdf)
     builder = EtchingBuilder(transformer, etching, writer.r)
     print(f"Gaia G={gaia.bright:g}より暗く{gaia.faint:g}以下の光量を集計します。", flush=True)
-    for position, flux in iter_flux_samples(gaia, regions, limit):
-        builder.add_sample(position, flux)
+    for sky_bin in iter_flux_bins(gaia, regions, limit):
+        builder.add_bin(*sky_bin)
     if not builder.cells:
         raise ValueError("Gaia入力に担当領域・等級範囲の天体がありません。")
     if etching.milky_way:
