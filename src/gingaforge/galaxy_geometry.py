@@ -76,7 +76,10 @@ class GalaxyTransformer:
 
     def assigned_unit(self, sp):
         """銀緯±20度の担当 ``(出力位置, 番号)`` を返す。対象外はNone。"""
-        longitude, latitude = sp.to_galactic()
+        return self.unit_of_galactic(*sp.to_galactic())
+
+    def unit_of_galactic(self, longitude, latitude):
+        """銀経・銀緯（度）の担当 ``(出力位置, 番号)`` を返す。対象外はNone。"""
         if not abs(latitude) <= self.LATITUDE_LIMIT + self._ANGLE_EPS:
             return None
         longitude = self._normalize_longitude(longitude)

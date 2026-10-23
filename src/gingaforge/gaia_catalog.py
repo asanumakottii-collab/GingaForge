@@ -85,7 +85,29 @@ def file_sha256(path):
 
 
 def iter_flux_samples(settings, regions, latitude_limit):
-    """(ICRS位置, 基準等級に対する光量)をストリームで返す。
+    """(ビン中心のICRS位置, 基準等級に対する光量)をストリームで返す。"""
+    for lon, lat, flux in _iter_cached_bins(settings, regions, latitude_limit):
+        yield SpherePosition.from_galactic(lon, lat), flux
+
+
+def iter_flux_bins(settings, regions, latitude_limit):
+    """(銀経の下端, 上端, 銀緯の下端, 上端, 基準等級に対する光量)を度でストリームで返す。
+
+    キャッシュはビンの中心だけを持つので、集計幅から範囲を戻す。銀緯±latitude_limitで
+    切り詰めたビンは、中心が切り詰め後の中点であることから下端・上端を求める。
+    """
+    half = settings.sky_step / 2
+    for lon, lat, flux in _iter_cached_bins(settings, regions, latitude_limit):
+        bottom, top = lat - half, lat + half
+        if top > latitude_limit:
+            bottom, top = 2 * lat - latitude_limit, latitude_limit
+        elif bottom < -latitude_limit:
+            bottom, top = -latitude_limit, 2 * lat + latitude_limit
+        yield lon - half, lon + half, bottom, top, flux
+
+
+def _iter_cached_bins(settings, regions, latitude_limit):
+    """(ビン中心の銀経, 銀緯, 光量)を返す。
 
     キャッシュはmanifestの条件とチェックサムを照合してから読む。
     """
@@ -117,7 +139,7 @@ def iter_flux_samples(settings, regions, latitude_limit):
                     raise ValueError("Gaia集計CSVに不正な光量があります。")
                 if not (0 <= lon < 360 and -latitude_limit <= lat <= latitude_limit):
                     raise ValueError("Gaia集計CSVの座標が領域外です。")
-                yield SpherePosition.from_galactic(lon, lat), flux
+                yield lon, lat, flux
 
 
 def _request(url, data=None):
