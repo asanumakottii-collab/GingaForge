@@ -123,6 +123,33 @@ class GalaxyOutputTests(unittest.TestCase):
                                     self.assertEqual(f"{expected * 2}mm", rect.get("width"))
                                     self.assertEqual(f"{expected * 2}mm", rect.get("height"))
 
+    def test_configured_frame_diameter_draws_circle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            props = {"plate.frame-diameter": "30", "color.invert": "yes"}
+            with _init_plate_writer(props, Path(directory, "gaia-ohp.properties")) as writer:
+                self.assertTrue(writer.circular)
+                self.assertEqual(15., writer.r)
+                writer.write_frames(2)
+                # 円の内側、外接正方形の角（円の外側）、円の外側。
+                writer.write_hole(0, 0, 10., -10., .01)
+                writer.write_hole(0, 0, 14., 14., .01)
+                writer.write_hole(0, 0, 15.01, 0., .01)
+            root = ET.parse(Path(directory, "output", "gaia-ohp", "inverted", "gaia-ohp-0.svg")).getroot()
+            namespace = "{http://www.w3.org/2000/svg}"
+            self.assertEqual([], root.findall(namespace + "rect"))
+            circles = root.findall(namespace + "circle")
+            frames = [c for c in circles if c.get("stroke")]
+            self.assertEqual(["15.0mm"] * 2, [c.get("r") for c in frames])
+            self.assertEqual(1, len(circles) - len(frames))
+
+    def test_frame_size_and_diameter_are_exclusive(self):
+        with self.assertRaisesRegex(ValueError, "plate.frame-diameter"):
+            _init_plate_writer({"plate.frame-size": "30", "plate.frame-diameter": "30"}, "gaia-ohp.properties")
+        for value in ("-1", "nan"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "plate.frame-diameter"):
+                    _init_plate_writer({"plate.frame-diameter": value}, "gaia-ohp.properties")
+
     def test_config_name_and_color_invert_select_output(self):
         for value, folder in (("no", "normal"), ("yes", "inverted"), ("y", "inverted")):
             with self.subTest(value=value):
