@@ -67,7 +67,7 @@ class IntegrationTests(unittest.TestCase):
             else:
                 text = text.replace('star-removal = starnet', 'star-removal = none')
             config.write_text(text)
-            result = self.run_command('ohp', '--config', str(config), cwd=root, timeout=300)
+            result = self.run_command('mellinger-ohp', '--config', str(config), cwd=root, timeout=300)
             self.assertEqual(0, result.returncode, result.stderr)
             output = configs / 'output/ohp'
             self.assertFalse((root / 'output').exists())
@@ -76,11 +76,11 @@ class IntegrationTests(unittest.TestCase):
 
     def test_cli_help_and_invalid_options(self):
         with tempfile.TemporaryDirectory() as directory:
-            for args in (('--help',), ('ohp', '--help'), ('gaia-etch', '--help'), ('install-starnet', '--help')):
+            for args in (('--help',), ('mellinger-ohp', '--help'), ('gaia-etch', '--help'), ('gaia-ohp', '--help'), ('install-starnet', '--help')):
                 result = self.run_command(*args, cwd=directory)
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertIn('usage:', result.stdout)
-            for args in (('legacy',), ('gaia-etch', '--unknown'), ('gaia-etch', '-f')):
+            for args in (('legacy',), ('ohp',), ('gaia-etch', '--unknown'), ('gaia-etch', '-f'), ('gaia-ohp', '--unknown'), ('gaia-etch', '-svg', '-pdf')):
                 self.assertEqual(2, self.run_command(*args, cwd=directory).returncode)
 
 

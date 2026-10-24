@@ -314,7 +314,7 @@ def build(config_path, accept_starnet_license=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(prog="gingaforge mellinger-ohp", description=__doc__)
     parser.add_argument("-f", "--config", type=Path, default=PROJECT_ROOT / "mellinger-ohp.properties")
     parser.add_argument("--accept-starnet-license", action="store_true",
                         help="StarNet2 の利用条件（同梱の LICENSE.txt）に同意する（対話できない環境用）")

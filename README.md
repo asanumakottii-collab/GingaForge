@@ -10,45 +10,39 @@ Mellinger方式で原盤から除く星を恒星投影機とそろえるため�
 Python 3.11以上を使用し、このフォルダで次を実行します。
 
 ```sh
+# 初回のみ: 環境の準備
 python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[test]'   # requirements.txt と同じ
+.venv/bin/python -m pip install -e '.[test]'
+# mellinger-ohp の星の除去に使う StarNet2（利用条件への同意あり）
+.venv/bin/gingaforge install-starnet   
 
-# OHPフィルム: 星の除去に使う StarNet2 を公式配布元から tools/starnet2/ に導入（初回のみ、利用条件への同意あり）
-.venv/bin/gingaforge install-starnet
-
-# OHPフィルム: FITSから2ページの原盤PDFを生成
-.venv/bin/gingaforge ohp
-
-# Gaiaエッチング: 保存済みキャッシュからSVG原盤を生成
-.venv/bin/gingaforge gaia-etch
-
-# 印刷用ベクトルPDF
-.venv/bin/gingaforge gaia-etch -PDF
-
-# キャッシュがない場合、または等級・集計ビンを変更した場合
-.venv/bin/gingaforge gaia-etch --download-gaia
-
-# 別の設定ファイルを使用
-.venv/bin/gingaforge gaia-etch -f gaia-etch.properties
-
-# Gaia星表からOHPフィルム印刷用の原盤（天の川強調あり）を output/gaia-ohp/inverted/ に生成
-.venv/bin/gingaforge gaia-etch -PDF -f gaia-ohp.properties
+# 原盤の生成
+.venv/bin/gingaforge mellinger-ohp      # Mellinger全天画像 → OHPフィルム用PDF
+.venv/bin/gingaforge gaia-etch          # Gaia → 金属エッチング用SVG・PDF
+.venv/bin/gingaforge gaia-ohp           # Gaia → OHPフィルム印刷用SVG・PDF（天の川強調あり）
 
 # テスト
 .venv/bin/python -m unittest discover -v
 ```
 
+| コマンド | 設定ファイル | 入力 | 出力 |
+|---|---|---|---|
+| `mellinger-ohp` | `mellinger-ohp.properties` | `source/mwpan2_RGB_3600.fits`、`source/hip_main.dat.gz`、StarNet2 | `output/mellinger-ohp/mellinger-ohp-plates.pdf` |
+| `gaia-etch` | `gaia-etch.properties` | `source/gaia/` | `output/gaia-etch/normal/gaia-etch-*.svg/pdf` |
+| `gaia-ohp` | `gaia-ohp.properties` | `source/gaia/` | `output/gaia-ohp/inverted/gaia-ohp-*.svg/pdf` |
+
+各コマンドのオプション（`--help` で一覧を表示）:
+
+| オプション | 対象 | 内容 |
+|---|---|---|
+| `-f <設定ファイル>` | 生成コマンドすべて | 表の設定ファイルの代わりに使う |
+| `-svg` / `-pdf` | `gaia-etch`、`gaia-ohp` | SVGのみ / PDFのみ出力（省略時は両方） |
+| `--download-gaia` | `gaia-etch`、`gaia-ohp` | Gaiaの光量を取得し直してから生成（初回、または等級・集計ビンの変更時） |
+
 `gingaforge` コマンドは `python -m gingaforge` でも実行できます。
 ライブラリとしては `from gingaforge.ohp import build`（OHP原盤PDF）、
 `from gingaforge.gaia_etch import generate`（Gaia原盤SVG / PDF）を使用します。
 
-| 方式 | 設定ファイル | 入力 | 出力 |
-|---|---|---|---|
-| `ohp` | `mellinger-ohp.properties` | `source/mwpan2_RGB_3600.fits`、`source/hip_main.dat.gz`、StarNet2 | `output/mellinger-ohp/mellinger-ohp-plates.pdf` |
-| `gaia-etch` | `gaia-etch.properties` | `source/gaia/`（`--download-gaia` で取得） | `output/gaia-etch/normal/gaia-etch-*.svg/pdf` |
-| `gaia-etch`（OHPフィルム） | `gaia-ohp.properties`（天の川強調あり） | `source/gaia/` | `output/gaia-ohp/inverted/gaia-ohp-*.svg/pdf` |
-
-設定ファイルを省略した場合は、`ohp` は `mellinger-ohp.properties`、`gaia-etch` は `gaia-etch.properties` を使用します。
 出力先は設定では指定せず、設定ファイルと同じフォルダの `output/<設定ファイル名>/` に保存します。
 ファイル名の接頭辞も設定ファイル名です。Gaia方式はさらに `color.invert` で `normal/` と `inverted/` に分けます。
 
@@ -167,7 +161,7 @@ Gaiaの等級範囲・取得ビン幅を変えた場合は `--download-gaia` で
 
 Gaiaモードは星座線を加工用原盤へ追加せず、入力待ちなしで生成します。
 `gaia-etch.properties` なら `output/gaia-etch/normal/`（`color.invert = yes` なら `inverted/`）の
-`gaia-etch-0.svg` と `gaia-etch-1.svg`（`-PDF`指定時はPDF）に計4原盤を出力します。
+`gaia-etch-0` と `gaia-etch-1` のSVG・PDF（`-svg` / `-pdf` 指定時はその形式のみ）に計4原盤を出力します。
 フォルダ名とファイル名の接頭辞は設定ファイル名から決まります。
 穴面積と投影光量の比例は均一照明・薄板を仮定しており、板厚、光源、エッチング精度、
 投影時のぼけによる影響は別途試作・測定してください。最小寸法を満たすことは加工成功の保証ではありません。
@@ -290,8 +284,8 @@ StarNet2（Mikita (Nikita) Misiura）は利用条件で再配布・同梱が禁�
 ```
 
 - **ダウンロードの検証**：フィードのURLが公式配布元（`starnetastro.com`、`download.starnetastro.com`）であることを確かめます。ダウンロードしたZIPは、フィードのサイズとSHA-256で照合してから展開します。展開先の外を指すZIPの項目は拒否します。
-- **利用条件への同意**：利用条件は、使う前に全文（配布物の `LICENSE.txt`）を示し、同意を得ます。同意した条文のSHA-256を `tools/starnet2/accepted-licenses.json` に記録するので、同じ条文には一度だけ同意すればよく、条文が改訂されたら同意し直します。対話できない環境では、全文を読んだうえで `--accept-starnet-license` を付けます（`gingaforge ohp` にも同じオプションがあります）。同意しなければ導入も使用もしません。
-- **使う実行ファイルの順番**：設定 `starnet-command` が空欄なら、①`tools/starnet2/` に導入したもの、②PATH 上の `starnet2` の順に探します。特定の StarNet2 を使う場合は `starnet-command` にパスを書きます。どれも見つからないとき、`gingaforge ohp` は対話できる端末なら導入するかを尋ね、対話できない環境では導入方法を示して止まります。
+- **利用条件への同意**：利用条件は、使う前に全文（配布物の `LICENSE.txt`）を示し、同意を得ます。同意した条文のSHA-256を `tools/starnet2/accepted-licenses.json` に記録するので、同じ条文には一度だけ同意すればよく、条文が改訂されたら同意し直します。対話できない環境では、全文を読んだうえで `--accept-starnet-license` を付けます（`gingaforge mellinger-ohp` にも同じオプションがあります）。同意しなければ導入も使用もしません。
+- **使う実行ファイルの順番**：設定 `starnet-command` が空欄なら、①`tools/starnet2/` に導入したもの、②PATH 上の `starnet2` の順に探します。特定の StarNet2 を使う場合は `starnet-command` にパスを書きます。どれも見つからないとき、`gingaforge mellinger-ohp` は対話できる端末なら導入するかを尋ね、対話できない環境では導入方法を示して止まります。
 - **実行時の表示**：使った StarNet2 の版とパスを表示し、PDF の見出しにも StarNet2 を使ったことを書きます。
 
 利用条件では、StarNet2 の出力を機械学習の学習に使うことや、他のソフトウェアの開発・テストの素材・基準結果に使うことも禁止されています。テストは StarNet2 をその場で動かすだけで、出力を正解データとして保存しません。
@@ -318,7 +312,7 @@ StarNet2（Mikita (Nikita) Misiura）は利用条件で再配布・同梱が禁�
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
 .venv/bin/gingaforge install-starnet
-.venv/bin/gingaforge ohp
+.venv/bin/gingaforge mellinger-ohp
 .venv/bin/python -m unittest -v tests.test_mellinger_ohp tests.test_starnet_setup
 ```
 
