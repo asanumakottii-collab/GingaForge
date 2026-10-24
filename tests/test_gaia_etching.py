@@ -391,6 +391,76 @@ class GaiaCommandTests(unittest.TestCase):
             self.assertEqual(["N0", "S0"], PdfReader(pages[0]).pages[0].extract_text().split())
             self.assertEqual(pages, sorted((Path(directory) / "output" / "galaxy" / "inverted").iterdir()))
 
+    def column_config(self, directory, settings):
+        directory = Path(directory)
+        write_cache(directory / "gaia", {0: [(30.05, .05, .05, 1)], 3: [(270.05, .05, .05, 1)]})
+        config = directory / "galaxy.properties"
+        config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\nplate.row=2\nplate.frame-size=22\n"
+                          "galaxy.etch.flux-gain=1\n" + settings)
+        return config
+
+    def test_columns_side_by_side_with_changed_settings(self):
+        from pypdf import PdfReader
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.column_config(directory, "column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\n")
+            with patch("sys.stdout", new_callable=StringIO) as stdout:
+                self.assertEqual(0, main(["-f", str(config)]))
+            self.assertIn("列2: galaxy.etch.flux-gain = 2", stdout.getvalue())
+            output = Path(directory) / "output" / "galaxy" / "inverted"
+            # 上段 N0・N1、下段 S0・S1 の1組を2列並べ、1用紙に収める。
+            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
+            text = PdfReader(output / "galaxy-0.pdf").pages[0].extract_text()
+            for label in ("#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2", "N0 #1", "S1 #2"):
+                self.assertIn(label, text)
+            svg = ET.parse(output / "galaxy-0.svg").getroot()
+            namespace = "{http://www.w3.org/2000/svg}"
+            texts = [element.text for element in svg.iter(namespace + "text")]
+            self.assertEqual(["#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2"], texts[:4])
+            self.assertEqual(8, sum(" #" in t for t in texts))
+            # 左の列は x < 105 mm、右の列は x > 105 mm。光量倍率2の右の列は穴が約2倍。
+            sides = Counter(float(c.attrib["cx"][:-2]) > 105 for c in svg.iter(namespace + "circle"))
+            self.assertGreater(sides[False], 0)
+            self.assertAlmostEqual(2., sides[True] / sides[False], delta=.2)
+
+    def test_single_column_output_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plain, counted = (self.column_config(Path(directory) / name, settings)
+                              for name, settings in (("plain", ""), ("counted", "column.count=1\n")))
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-svg", "-f", str(plain)]))
+                self.assertEqual(0, main(["-svg", "-f", str(counted)]))
+            pages = [config.parent / "output" / "galaxy" / "inverted" / "galaxy-0.svg" for config in (plain, counted)]
+            self.assertEqual(pages[0].read_text(), pages[1].read_text())
+            texts = [e.text for e in ET.parse(pages[0]).getroot().iter("{http://www.w3.org/2000/svg}text")]
+            self.assertEqual(["N0", "S0", "N1", "S1"], texts)
+
+    def test_invalid_column_settings_fail_before_output(self):
+        cases = (
+            ("column.count=0\n", "column.count"),
+            ("column.count=two\n", "column.count"),
+            ("column.count=2\ncolumn.3.galaxy.etch.flux-gain=2\n", "1〜2"),
+            ("column.count=2\ncolumn.x.galaxy.etch.flux-gain=2\n", "列番号"),
+            ("column.count=2\ncolumn.2.galaxy.etch.flux-gian=2\n", "列の指定なし"),
+            ("column.count=2\ncolumn.2.plate.frame-size=10\n", "全列共通"),
+            ("column.count=2\ncolumn.2.color.invert=no\n", "全列共通"),
+            ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\ncolumn.02.galaxy.etch.flux-gain=3\n", "重複"),
+            ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=-1\n", "列2: galaxy.etch.flux-gain"),
+            ("column.count=2\ngalaxy.gaia.faint-limit=17\ncolumn.2.galaxy.gaia.faint-limit=16\n",
+             "galaxy.gaia.input"),
+            # 原盤が列の幅（210 mm ÷ 列の数）に収まらない。
+            ("column.count=10\n", "plate.frame-size"),
+            ("column.count=4\nplate.frame-size=60\n", "plate.frame-size"),
+            # 原盤は収まるが、列の見出しが最上段の原盤名と重なる。
+            ("column.count=2\nplate.frame-size=60\ncolumn.2.galaxy.etch.flux-gain=2\n", "列の見出し"),
+        )
+        for settings, message in cases:
+            with (self.subTest(settings=settings), tempfile.TemporaryDirectory() as directory,
+                  patch("sys.stdout", new_callable=StringIO), patch("sys.stderr", new_callable=StringIO) as stderr):
+                config = self.column_config(directory, settings)
+                self.assertEqual(2, main(["-f", str(config)]))
+                self.assertIn(message, stderr.getvalue())
+                self.assertFalse((Path(directory) / "output").exists())
+
     def test_default_outputs_svg_and_pdf(self):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
