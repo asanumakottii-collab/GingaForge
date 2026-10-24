@@ -350,7 +350,7 @@ class GaiaCommandTests(unittest.TestCase):
             config = self.config_and_input(directory)
             with (patch("builtins.input", side_effect=AssertionError("unexpected prompt")),
                   patch("sys.stdout", new_callable=StringIO)):
-                self.assertEqual(0, main(["-f", str(config)]))
+                self.assertEqual(0, main(["-svg", "-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
             pages = sorted(output.glob("*.svg"))
             self.assertEqual(2, len(pages))
@@ -380,6 +380,16 @@ class GaiaCommandTests(unittest.TestCase):
             pages = sorted((Path(directory) / "output" / "galaxy" / "inverted").glob("*.pdf"))
             self.assertEqual(2, len(pages))
             self.assertEqual(["N0", "S0"], PdfReader(pages[0]).pages[0].extract_text().split())
+            self.assertEqual(pages, sorted((Path(directory) / "output" / "galaxy" / "inverted").iterdir()))
+
+    def test_default_outputs_svg_and_pdf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.config_and_input(directory)
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-f", str(config)]))
+            output = Path(directory) / "output" / "galaxy" / "inverted"
+            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg", "galaxy-1.pdf", "galaxy-1.svg"],
+                             sorted(p.name for p in output.iterdir()))
 
 
 if __name__ == "__main__":

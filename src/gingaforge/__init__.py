@@ -2,7 +2,7 @@
 """GingaForge: 銀河投影機（ぎんとう）用の天の川原盤を生成するライブラリ。
 
 - ``gingaforge.ohp.build(config)``: Mellinger全天画像からOHPフィルム用の原盤PDF
-- ``gingaforge.gaia_etch.generate(config, pdf=False)``: Gaia DR3のG帯光量からエッチング用の穴原盤（SVG / PDF）
+- ``gingaforge.gaia_etch.generate(config, formats=("svg", "pdf"))``: Gaia DR3のG帯光量からエッチング用の穴原盤（SVG / PDF）
 """
 
 __version__ = "0.1.0"
