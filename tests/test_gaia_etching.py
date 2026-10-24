@@ -252,6 +252,15 @@ class EtchingTests(unittest.TestCase):
         self.assertLess(plate["requested_area_mm2"], plate["linear_area_mm2"])
         self.assertIsNone(linear_builder.milky_way)
 
+    def test_ohp_prefix_is_same_settings_as_etch_prefix(self):
+        etch = EtchingSettings.from_properties({"galaxy.etch.cell-size-mm": ".4", "galaxy.etch.milky-way": "yes"})
+        ohp = EtchingSettings.from_properties({"galaxy.ohp.cell-size-mm": ".4", "galaxy.ohp.milky-way": "yes"})
+        self.assertEqual(etch, ohp)
+        with self.assertRaisesRegex(ValueError, "galaxy.ohp.seed"):
+            EtchingSettings.from_properties({"galaxy.ohp.seed": "1.2"})
+        with self.assertRaisesRegex(ValueError, "どちらか一方"):
+            EtchingSettings.from_properties({"galaxy.etch.seed": "1", "galaxy.ohp.seed": "2"})
+
     def test_milky_way_enhancement_settings_and_uniform_input(self):
         settings = EtchingSettings.from_properties({"galaxy.etch.milky-way": "yes",
                                                     "galaxy.etch.milky-way.gamma": "2"})
