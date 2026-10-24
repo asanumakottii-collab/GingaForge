@@ -26,8 +26,9 @@ class MasterChecks(unittest.TestCase):
         self.assertEqual(REGIONS, {'N0': (0, 60), 'N1': (60, 120),
                                    'S0': (300, 360), 'S1': (240, 300)})
         _, _, _, _, width, height = geometry(self.cfg)
-        self.assertAlmostEqual(width, 36.39702342662024)
-        self.assertAlmostEqual(height, 52.35987755982988)
+        self.assertAlmostEqual(width, 36.39702342662024 * 0.42017)
+        self.assertAlmostEqual(height, 52.35987755982988 * 0.42017)
+        self.assertAlmostEqual(height, 22, places=3)
 
     def test_boundary_orientation_and_source_wcs(self):
         p, bmax, scale, _, width, height = geometry(self.cfg)
@@ -73,9 +74,9 @@ class MasterChecks(unittest.TestCase):
             text = text.replace('star-removal = starnet', 'star-removal = none')
             config.write_text(text.replace('raster-dpi = 1200', 'raster-dpi = 72'))
             reader = PdfReader(build(config))
-            self.assertEqual(len(reader.pages), 2)
+            self.assertEqual(len(reader.pages), 1)
             _, _, _, _, width, height = geometry(self.cfg)
-            for page, names in zip(reader.pages, [('N0', 'S0'), ('N1', 'S1')]):
+            for page, names in zip(reader.pages, [('N0', 'S0', 'N1', 'S1')]):
                 self.assertAlmostEqual(float(page.mediabox.width), 210/25.4*72, places=3)
                 self.assertAlmostEqual(float(page.mediabox.height), 297/25.4*72, places=3)
                 self.assertIn('B:G:R = 0.5:0.5:0', page.extract_text())
@@ -83,7 +84,7 @@ class MasterChecks(unittest.TestCase):
                     self.assertIn(name, page.extract_text())
                 operations = ContentStream(page['/Contents'], reader).operations
                 transforms = [values for values, op in operations if op == b'cm' and float(values[0]) > 10]
-                self.assertEqual(len(transforms), 2)
+                self.assertEqual(len(transforms), 4)
                 for values in transforms:
                     self.assertAlmostEqual(float(values[0]), width/25.4*72, places=3)
                     self.assertAlmostEqual(float(values[3]), height/25.4*72, places=3)
