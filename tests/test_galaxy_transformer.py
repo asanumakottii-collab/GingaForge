@@ -1,5 +1,6 @@
 import importlib.util
 import math
+import re
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -171,6 +172,27 @@ class GalaxyOutputTests(unittest.TestCase):
                 pdf = PdfReader(path)
                 self.assertEqual(1, len(pdf.pages))
                 self.assertEqual(labels, pdf.pages[0].extract_text().split())
+
+    @unittest.skipUnless(importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
+                         "ReportLab and pypdf are required for PDF tests")
+    def test_mirrored_pdf_is_flipped_horizontally_into_separate_file(self):
+        from pypdf import PdfReader
+
+        with tempfile.TemporaryDirectory() as directory:
+            for mirrored in (False, True):
+                with _init_plate_writer({}, Path(directory, "gaia-etch.properties"), pdf=True,
+                                        mirrored=mirrored) as writer:
+                    writer.write_hole(0, 0, 10., 0., .5)
+            folder = Path(directory, "output", "gaia-etch", "normal")
+            self.assertEqual(["gaia-etch-0-mirrored.pdf", "gaia-etch-0.pdf"],
+                             sorted(p.name for p in folder.glob("*.pdf")))
+            normal, mirrored = (PdfReader(folder / name).pages[0]
+                                for name in ("gaia-etch-0.pdf", "gaia-etch-0-mirrored.pdf"))
+            content = mirrored.get_contents().get_data().decode()
+            # 描画内容は通常版と同じで、ページ全体に x → 用紙幅 - x の変換だけが加わる。
+            flip = re.search(r"-1 0 0 1 ([\d.]+) 0 cm\n", content)
+            self.assertAlmostEqual(float(mirrored.mediabox.width), float(flip.group(1)), places=3)
+            self.assertEqual(normal.get_contents().get_data().decode(), content.replace(flip.group(0), "", 1))
 
 
 if __name__ == "__main__":

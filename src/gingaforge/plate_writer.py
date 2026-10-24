@@ -132,13 +132,15 @@ class _PlateWriterBase:
 class PlateWriterPDF(_PlateWriterBase):
     """ISO A4（210 x 297 mm）の1ページPDFをベクトルで書き出します。"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mirrored=False, **kwargs):
+        """mirrored: Trueなら裏面印刷用に文字も含めて左右反転し、``<名前>-mirrored.pdf`` に書き出す。"""
         from reportlab.lib.units import mm
         from reportlab.pdfgen.canvas import Canvas
 
         super().__init__(*args, **kwargs)
         self._mm = mm
         self._canvas_class = Canvas
+        self.mirrored = mirrored
 
     def _x(self, value):
         """mm単位のx座標をPDFのpoint単位に変換します。"""
@@ -148,13 +150,20 @@ class PlateWriterPDF(_PlateWriterBase):
         """y軸下向きのmm座標をPDFのy軸上向き座標に変換します。"""
         return (self.HEIGHT * 2 - value) * self._mm
 
+    def _pdf_path(self, page):
+        return self._output_path(f"{page}-mirrored" if self.mirrored else page, "pdf")
+
     def _open_page(self, page):
-        return self._canvas_class(
-            self._output_path(page, "pdf"),
+        out = self._canvas_class(
+            self._pdf_path(page),
             pagesize=(self._x(self.WIDTH), self._x(self.HEIGHT * 2)),
             pageCompression=1,
             invariant=1,
         )
+        if self.mirrored:
+            out.translate(self._x(self.WIDTH), 0)
+            out.scale(-1, 1)
+        return out
 
     def _draw_text(self, out, cx, y, text, size):
         out.setFillGray(0)
@@ -179,7 +188,7 @@ class PlateWriterPDF(_PlateWriterBase):
 
     def close(self):
         for index, out in enumerate(self.outs):
-            destination = self._output_path(index, "pdf")
+            destination = self._pdf_path(index)
             temporary = None
             try:
                 # 既存ファイルへの直接書き込みは同期ストレージ等でタイムアウト
