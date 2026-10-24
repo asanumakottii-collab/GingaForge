@@ -30,6 +30,9 @@ from .models import SpherePosition
 # StarNet2へ渡す16ビット画像の可逆なasinh変換。上限を超えるのは明るい星の芯だけ。
 STARNET_RANGE = 20000.
 STARNET_SOFTENING = 50.
+# A4に2列×2段で4区画を並べる。枠の一辺は区画の幅（210 / 2 mm）から余白10 mmを引いたもの。
+PLATE_LAYOUT = {"N0": (52.5, 222.75), "S0": (157.5, 222.75), "N1": (52.5, 74.25), "S1": (157.5, 74.25)}
+FRAME_SIDE = 95.
 
 
 def read_config(path):
@@ -49,8 +52,8 @@ def geometry(cfg):
         raise ValueError("This OHP renderer supports only the centered projector")
     width = 2 * p * math.tan(math.radians(bmax)) * scale
     height = p * math.radians(60) * scale
-    if max(width, height) > 130:
-        raise ValueError("Image exceeds the available 130 mm area in the OTL layout")
+    if width > FRAME_SIDE - 16 or height > FRAME_SIDE - 52:
+        raise ValueError(f"Image and labels do not fit the {FRAME_SIDE:g} mm frame of the 2 x 2 layout")
     return p, bmax, scale, dpi, width, height
 
 
@@ -227,18 +230,21 @@ def tone_map(values, cfg):
     return np.rint(255 * z ** (1 / gamma)).astype(np.uint8)
 
 
-def draw_plate(c, name, region, image, width, height, cy, caption):
-    cx, side = 105., 138.5
+def draw_plate(c, name, region, image, width, height, cx, cy, caption):
+    side = FRAME_SIDE
     c.setFillColorRGB(0, 0, 0)
     c.rect((cx - side / 2) * mm, (cy - side / 2) * mm, side * mm, side * mm, fill=1, stroke=0)
     c.drawImage(ImageReader(image), (cx - width / 2) * mm,
                 (cy - height / 2) * mm, width * mm, height * mm, mask=None)
     c.setFillColorRGB(1, 1, 1)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 9) * mm, name)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 8) * mm, name)
+    c.setFont("Helvetica", 7)
+    c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 13) * mm,
+                 f"l = {region[0]:.0f} to {region[1]:.0f} deg")
+    c.setFont("Helvetica", 6)
+    c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 17) * mm, caption)
     c.setFont("Helvetica", 8)
-    c.drawString((cx - side / 2 + 5) * mm, (cy + side / 2 - 15) * mm,
-                 f"l = {region[0]:.0f} to {region[1]:.0f} deg   |   {caption}")
     c.drawCentredString(cx * mm, (cy + height / 2 + 4) * mm, f"l = {region[1]:.0f} deg")
     c.drawCentredString(cx * mm, (cy - height / 2 - 6) * mm, f"l = {region[0]:.0f} deg")
     c.drawCentredString(cx * mm, (cy - side / 2 + 9) * mm, "LEFT: -b     RIGHT: +b     WHITE: CLEAR FILM")
@@ -265,14 +271,13 @@ def make_master(path, images, cfg):
     c = canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
     c.setTitle("Mellinger OHP masters - N0 N1 S0 S1")
     c.setAuthor("Source sky image: Axel Mellinger (2009)")
-    for names in [("N0", "S0"), ("N1", "S1")]:
-        for name, cy in zip(names, [222.75, 74.25]):
-            draw_plate(c, name, REGIONS[name], images[name], width, height, cy, caption(cfg))
-        c.setFillColorRGB(0, 0, 0)
-        c.setFont("Helvetica", 6)
-        c.drawCentredString(105 * mm, 148 * mm,
-            f"PRINT AT 100% / NO FIT-TO-PAGE | scale {scale:g} | field {width:.4f} x {height:.4f} mm | |b| <= {bmax:g} deg")
-        c.showPage()
+    for name, (cx, cy) in PLATE_LAYOUT.items():
+        draw_plate(c, name, REGIONS[name], images[name], width, height, cx, cy, caption(cfg))
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(105 * mm, 148 * mm,
+        f"PRINT AT 100% / NO FIT-TO-PAGE | scale {scale:g} | field {width:.4f} x {height:.4f} mm | |b| <= {bmax:g} deg")
+    c.showPage()
     c.save()
 
 
