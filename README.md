@@ -186,7 +186,7 @@ GaiaデータはESA/Gaia/DPACによります。発表等では[Gaiaの謝辞・�
 金属エッチングでは0.02 mmの穴を加工できないため、同じ穴の原盤をOHPフィルムに印刷して使います。
 `gaia-ohp.properties` は穴径0.02 mm・穴の間隔0.02 mm・セル0.2 mm、22 mm枠、黒地に白穴
 （黒いインクが遮光、穴が透過）で `output/gaia-ohp/inverted/` に出力し、次の天の川強調を有効にしています。
-黒点を変えた4組を1枚に並べて出力します（下記「列ごとに設定を変えて並べる」）。
+光量倍率（`flux-gain`）を変えた4組を1枚に並べて出力します（下記「列ごとに設定を変えて並べる」）。
 
 G帯の光量をそのまま穴面積にすると、銀河面に集中しない7.5〜12等程度の前景星が光量の大半を占め、
 天の川中心（|b| = 2〜5°）と外側（|b| = 15〜20°）の明るさの比は約2.7倍しかありません
@@ -213,15 +213,16 @@ S が黒点以下の場所は、明るい星も含めて穴を開けません。
 `column.<列番号>.<キー> = 値` で、その列（左から1, 2, ...）だけ設定を変えられます。
 黒点や `flux-gain` などの違いを、1回のテスト印刷で並べて比べるためのものです。
 
-同梱の `gaia-ohp.properties` は4列で、黒点を30・40・50・60に変えています。
+同梱の `gaia-ohp.properties` は4列で、光量倍率 `galaxy.ohp.flux-gain` を、列の指定なしの値（0.05）から
+0.03・0.02・0.01・0.008に下げています。
 `output/gaia-ohp/inverted/gaia-ohp-0.pdf`（A4・1ページ）の各列は、上から N0・N1・S0・S1 です。
 
 ```
 column.count = 4
-column.1.galaxy.ohp.milky-way.black-percentile = 30
-column.2.galaxy.ohp.milky-way.black-percentile = 40
-column.3.galaxy.ohp.milky-way.black-percentile = 50
-column.4.galaxy.ohp.milky-way.black-percentile = 60
+column.1.galaxy.ohp.flux-gain = 0.03
+column.2.galaxy.ohp.flux-gain = 0.02
+column.3.galaxy.ohp.flux-gain = 0.01
+column.4.galaxy.ohp.flux-gain = 0.008
 ```
 
 - SVG・PDFの各列の上に「#列番号」と、その列で変えた設定（`キー = 値`）を書き出します。変えていない列は `(no changes)` です。
