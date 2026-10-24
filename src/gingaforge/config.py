@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
 """Javaのプロパティファイル形式(key = value, '#'または'!'で始まる行はコメント)を読み込むユーティリティ。"""
 
 import math
