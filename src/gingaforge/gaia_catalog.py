@@ -1,9 +1,9 @@
+# Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
 """Gaia DR3のG帯光量マップを読む。ネットワーク取得は明示指定時だけ行う。
 
 ESA TAPで銀経・銀緯ビンごとに集計した光量をキャッシュし、検証してから読み込む。
 集計は恒星数ではなく SUM(10**(-0.4*(G-reference)))。
 参考: https://www.cosmos.esa.int/web/gaia-users/archive/programmatic-access
-Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
 """
 
 import csv
