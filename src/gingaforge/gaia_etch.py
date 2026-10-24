@@ -97,7 +97,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
         loss = item["capacity_loss_area_mm2"] / requested if requested else 0.
         print(f"{item['plate']}: {item['holes']:,}穴、容量不足の光量 {loss:.2%}")
         if loss > .01:
-            print("  注意: 濃淡が飽和しています。galaxy.etch.flux-gainを下げるか、加工条件・集計セルを見直してください。")
+            print("  注意: 濃淡が飽和しています。flux-gain（galaxy.etch.* / galaxy.ohp.*）を下げるか、加工条件・集計セルを見直してください。")
     print(f"生成完了: {writers[0].output_dir}")
     return writers[0].output_dir
 

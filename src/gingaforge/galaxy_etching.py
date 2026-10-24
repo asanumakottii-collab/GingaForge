@@ -67,28 +67,33 @@ class EtchingSettings:
 
     @classmethod
     def from_properties(cls, props):
-        diameter = positive_number(props, "galaxy.etch.min-hole-diameter-mm", .02)
-        web = positive_number(props, "galaxy.etch.min-web-mm", .02)
-        cell = positive_number(props, "galaxy.etch.cell-size-mm", .2)
-        gain = positive_number(props, "galaxy.etch.flux-gain", 1.)
+        # 金属エッチング用は galaxy.etch.*、OHP印刷用は galaxy.ohp.* と書ける。中身は同じ設定。
+        prefixes = {p for p in ("galaxy.etch", "galaxy.ohp") if any(k.startswith(p + ".") for k in props)}
+        if len(prefixes) > 1:
+            raise ValueError("galaxy.etch.* と galaxy.ohp.* は同じ設定です。どちらか一方だけで書いてください。")
+        prefix = prefixes.pop() if prefixes else "galaxy.etch"
+        diameter = positive_number(props, f"{prefix}.min-hole-diameter-mm", .02)
+        web = positive_number(props, f"{prefix}.min-web-mm", .02)
+        cell = positive_number(props, f"{prefix}.cell-size-mm", .2)
+        gain = positive_number(props, f"{prefix}.flux-gain", 1.)
         scale = positive_number(props, "scale", 1.)
         try:
-            seed = int(props.get("galaxy.etch.seed", 0))
+            seed = int(props.get(f"{prefix}.seed", 0))
         except (ValueError, TypeError) as exc:
-            raise ValueError("galaxy.etch.seed: 整数を指定してください。") from exc
+            raise ValueError(f"{prefix}.seed: 整数を指定してください。") from exc
         if cell < diameter + web:
-            raise ValueError("galaxy.etch.cell-size-mm は最小穴径＋最小金属幅以上にしてください。")
+            raise ValueError(f"{prefix}.cell-size-mm は最小穴径＋最小金属幅以上にしてください。")
         if cell / (diameter + web) > 100:
             raise ValueError("1セルの候補点が多すぎます。cell-size-mm / (穴径+金属幅) <= 100 としてください。")
-        milky_way = props.get("galaxy.etch.milky-way", "no").strip().lower() in {"y", "yes", "true"}
-        black = positive_number(props, "galaxy.etch.milky-way.black-percentile", 40., allow_zero=True)
-        anchor = positive_number(props, "galaxy.etch.milky-way.anchor-percentile", 95.)
-        gamma = positive_number(props, "galaxy.etch.milky-way.gamma", 1.)
-        smoothing = positive_number(props, "galaxy.etch.milky-way.smoothing-mm", 1.)
+        milky_way = props.get(f"{prefix}.milky-way", "no").strip().lower() in {"y", "yes", "true"}
+        black = positive_number(props, f"{prefix}.milky-way.black-percentile", 40., allow_zero=True)
+        anchor = positive_number(props, f"{prefix}.milky-way.anchor-percentile", 95.)
+        gamma = positive_number(props, f"{prefix}.milky-way.gamma", 1.)
+        smoothing = positive_number(props, f"{prefix}.milky-way.smoothing-mm", 1.)
         if not black < anchor <= 100:
-            raise ValueError("galaxy.etch.milky-way: 0 <= black-percentile < anchor-percentile <= 100 としてください。")
+            raise ValueError(f"{prefix}.milky-way: 0 <= black-percentile < anchor-percentile <= 100 としてください。")
         if smoothing / cell > 50:
-            raise ValueError("galaxy.etch.milky-way.smoothing-mm は cell-size-mm の50倍以下にしてください。")
+            raise ValueError(f"{prefix}.milky-way.smoothing-mm は cell-size-mm の50倍以下にしてください。")
         return cls(diameter, web, cell, gain, seed, scale, milky_way, black, anchor, gamma, smoothing)
 
 
