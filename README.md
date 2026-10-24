@@ -37,6 +37,7 @@ python3 -m venv .venv
 |---|---|---|
 | `-f <設定ファイル>` | 生成コマンドすべて | 表の設定ファイルの代わりに使う |
 | `-svg` / `-pdf` | `gaia-etch`、`gaia-ohp` | SVGのみ / PDFのみ出力（省略時は両方） |
+| `-mirrored` | `gaia-etch`、`gaia-ohp` | 裏面印刷用に文字も含めて左右反転したPDFのみ出力（`gaia-ohp-0-mirrored.pdf` など。通常のSVG・PDFは上書きしない） |
 | `--download-gaia` | `gaia-etch`、`gaia-ohp` | Gaiaの光量を取得し直してから生成（初回、または等級・集計ビンの変更時） |
 
 `gingaforge` コマンドは `python -m gingaforge` でも実行できます。

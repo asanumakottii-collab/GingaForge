@@ -48,16 +48,17 @@ def _init_galaxy_transformer(props):
     return GalaxyTransformer(radius, sphere * scale, horizontal * scale, vertical * scale, plate * scale)
 
 
-def _init_plate_writer(props, config_path, pdf=False, column_headings=((),)):
+def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mirrored=False):
     column = int(props.get("plate.column", 1))
     row = int(props.get("plate.row", 1))
     frame_size = positive_number(props, "plate.frame-size", 0., allow_zero=True)
     invert_color = props.get("color.invert", "no").strip().lower() in {"y", "yes", "true"}
     # output/<設定ファイル名>/ の下で、白地に黒穴（normal）と黒地に白穴（inverted）を分ける。
     output_dir = output_directory(config_path, "inverted" if invert_color else "normal")
-    writer_class = PlateWriterPDF if pdf else PlateWriterSVG
-    return writer_class(column, row, frame_size / 2, f"{Path(config_path).stem}-", invert_color, output_dir,
-                        column_headings)
+    args = (column, row, frame_size / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings)
+    if mirrored:
+        return PlateWriterPDF(*args, mirrored=True)
+    return PlateWriterPDF(*args) if pdf else PlateWriterSVG(*args)
 
 
 def _column_properties(props):
@@ -131,7 +132,10 @@ def _build_column(gaia, etching, transformer, frame_radius):
 
 
 def generate(config_path, formats=("svg", "pdf"), download=False):
-    """設定ファイルに従ってGaia原盤を formats（"svg" / "pdf"）で生成し、出力フォルダを返します。"""
+    """設定ファイルに従ってGaia原盤を formats（"svg" / "pdf" / "pdf-mirrored"）で生成し、出力フォルダを返します。
+
+    "pdf-mirrored" は裏面印刷用に左右反転したPDFを ``<名前>-mirrored.pdf`` に出力する。
+    """
     config_path = Path(config_path).resolve()
     props = load_properties(config_path)
     directory = config_path.parent
@@ -154,7 +158,8 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
             download_gaia(gaia, GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT)
     # 読み込み・配置に失敗したとき、既存原盤を途中結果で上書きしない。
     headings = _column_headings([change for change, *_ in columns])
-    writers = [_init_plate_writer(props, config_path, fmt == "pdf", headings) for fmt in formats]
+    writers = [_init_plate_writer(props, config_path, fmt == "pdf", headings, fmt == "pdf-mirrored")
+               for fmt in formats]
     results = []
     for number, (change, gaia, etching, transformer) in enumerate(columns, 1):
         if len(columns) > 1:
@@ -178,6 +183,8 @@ def main(argv=None, config="gaia-etch.properties", prog=None):
                                help="SVGのみ出力")
     output_format.add_argument("-PDF", "-pdf", "--pdf", dest="formats", action="store_const", const=("pdf",),
                                help="印刷用PDFのみ出力")
+    output_format.add_argument("-mirrored", "--mirrored", dest="formats", action="store_const",
+                               const=("pdf-mirrored",), help="裏面印刷用に左右反転したPDF（<名前>-mirrored.pdf）のみ出力")
     parser.set_defaults(formats=("svg", "pdf"))
     parser.add_argument("--download-gaia", action="store_true", help="光量マップを取得して生成")
     args = parser.parse_args(argv)
