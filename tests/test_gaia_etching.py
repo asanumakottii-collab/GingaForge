@@ -126,6 +126,19 @@ class EtchingTests(unittest.TestCase):
         self.assertGreater(plates[0]["capacity_loss_area_mm2"], 0)
         self.assertTrue(all(max(abs(x), abs(y)) + builder.radius + .02 <= .1 for _, _, x, y in holes))
 
+    def test_circular_frame_keeps_holes_inside_circle(self):
+        # 一辺10 mmの正方形と直径10 mmの円。円は正方形の角の穴を除く。
+        holes = {}
+        for circular in (False, True):
+            builder = EtchingBuilder(self.t, self.settings, 5., circular)
+            for lon in range(25, 36):
+                for lat in range(-5, 6):
+                    builder.add_sample(position(lon + .01, lat + .01), 1.)
+            holes[circular] = list(builder.build()[0])
+        margin = builder.radius + .02
+        self.assertTrue(all(math.hypot(x, y) + margin <= 5. for _, _, x, y in holes[True]))
+        self.assertTrue(any(math.hypot(x, y) + margin > 5. for _, _, x, y in holes[False]))
+
     def test_four_units_do_not_share_rounding_or_flux(self):
         builder = EtchingBuilder(self.t, self.settings, 69.25)
         for lon in (30.01, 90.01, 270.01, 330.01):

@@ -98,7 +98,8 @@ class EtchingSettings:
 
 
 class EtchingBuilder:
-    def __init__(self, transformer, settings, frame_radius):
+    def __init__(self, transformer, settings, frame_radius, circular=False):
+        """circular: Trueなら半径 frame_radius の円形枠、Falseなら一辺 2 × frame_radius の正方形枠の内側に穴を置く。"""
         self.transformer = transformer
         self.settings = settings
         self.radius = settings.min_diameter_mm * settings.scale / 2
@@ -109,6 +110,7 @@ class EtchingBuilder:
         self.quantum_area = math.pi * self.radius ** 2
         self.reference_area = math.pi * transformer.radius ** 2 * settings.flux_gain
         self.frame_radius = frame_radius
+        self.circular = circular
         self.cells = defaultdict(float)
         self.milky_way = None
         self._corner_unit, self._corners = None, {}
@@ -160,7 +162,8 @@ class EtchingBuilder:
                 x = (ix * n + i + .5) * self.pitch
                 # 枠外で穴が切れたり、周囲の金属幅が不足するのを避ける。
                 margin = self.radius + self.settings.min_web_mm * self.settings.scale
-                if max(abs(x), abs(y)) + margin > self.frame_radius:
+                distance = math.hypot(x, y) if self.circular else max(abs(x), abs(y))
+                if distance + margin > self.frame_radius:
                     continue
                 sp = self.transformer.inverse_transform_unit(x, y, *unit)
                 if self.transformer.assigned_unit(sp) != unit:

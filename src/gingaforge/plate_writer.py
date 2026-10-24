@@ -35,8 +35,12 @@ class _PlateWriterBase:
     HEADING_SIZE = 2.5  # 列の見出しの文字の大きさの上限 (mm)
     HEADING_TOP = 5.  # 用紙の上端から列の見出しまでの余白 (mm)
 
-    def __init__(self, column, row, r, filename_prefix, invert_color, output_dir, column_headings=((),)):
-        """column_headings: 列ごとの見出しの行。用紙を列の数で横に等分し、各列に上下の原盤を一式ずつ置く。"""
+    def __init__(self, column, row, r, filename_prefix, invert_color, output_dir, column_headings=((),),
+                 circular=False):
+        """column_headings: 列ごとの見出しの行。用紙を列の数で横に等分し、各列に上下の原盤を一式ずつ置く。
+
+        circular: Trueなら原盤枠を半径 r の円、Falseなら一辺 2r の正方形にする。
+        """
         if column <= 0:
             raise ValueError("横の値が不正です。")
         if row <= 0:
@@ -49,9 +53,11 @@ class _PlateWriterBase:
         self.column = column
         self.row = row
         side = min(self.WIDTH / (len(self.column_headings) * column), self.HEIGHT / row)
+        self.circular = circular
         self.r = (side - 10.) / 2 if r == 0 else r
         if not 0 < self.r * 2 <= side:
-            raise ValueError(f"原盤が用紙に収まりません。plate.frame-size を {side:g} mm 以下にするか、"
+            key = "plate.frame-diameter" if circular else "plate.frame-size"
+            raise ValueError(f"原盤が用紙に収まりません。{key} を {side:g} mm 以下にするか、"
                              "原盤・列の数を減らしてください。")
         self.filename_prefix = filename_prefix
         self.invert_color = invert_color  # Falseなら原板を白で星を黒, Trueなら原板を黒で星を白
@@ -114,10 +120,17 @@ class _PlateWriterBase:
             for column in range(len(self.column_headings)):
                 self._write_frame(number_of_units - 1, column)
 
+    def inside_frame(self, x, y, margin=0.):
+        """原盤中心からの位置 (x, y) が、枠の縁から margin 以上内側にあるか。"""
+        if not (math.isfinite(x) and math.isfinite(y)):
+            return False
+        distance = math.hypot(x, y) if self.circular else max(abs(x), abs(y))
+        return distance + margin <= self.r
+
     def write_hole(self, dir_, index, x, y, r, column=0):
         """列 column の原盤中心からの位置 (x, y) に半径 r の穴を出力します。枠外は無視します。"""
         self._write_frame(index, column)
-        if not (math.isfinite(x) and math.isfinite(y) and abs(x) <= self.r and abs(y) <= self.r):
+        if not self.inside_frame(x, y):
             return
         out = self.outs[index // (self.column * self.row)]
         self._draw_hole(out, self._get_cx(index, column) + x, self._get_cy(dir_, index) + y, r)
@@ -175,12 +188,12 @@ class PlateWriterPDF(_PlateWriterBase):
         out.setLineWidth(self._x(0.1))
         out.setStrokeGray(0)
         out.setFillGray(0)
+        stroke, fill = (0, 1) if self.invert_color else (1, 0)
+        if self.circular:
+            out.circle(self._x(cx), self._y(cy), self._x(self.r), stroke=stroke, fill=fill)
+            return
         x, y, side = cx - self.r, cy - self.r, self.r * 2
-        out.rect(
-            self._x(x), self._y(y + side), self._x(side), self._x(side),
-            stroke=0 if self.invert_color else 1,
-            fill=1 if self.invert_color else 0,
-        )
+        out.rect(self._x(x), self._y(y + side), self._x(side), self._x(side), stroke=stroke, fill=fill)
 
     def _draw_hole(self, out, x, y, r):
         out.setFillGray(1 if self.invert_color else 0)
@@ -227,9 +240,12 @@ class PlateWriterSVG(_PlateWriterBase):
 
     def _draw_frame(self, out, cx, cy, label):
         self._draw_text(out, cx, cy - self.r, label, self.LABEL_SIZE)
-        out.write(f"<rect x=\"{cx - self.r}mm\" y=\"{cy - self.r}mm\" "
-                  f"width=\"{self.r * 2}mm\" height=\"{self.r * 2}mm\" "
-                  f"fill=\"{'black' if self.invert_color else 'none'}\" "
+        if self.circular:
+            out.write(f"<circle cx=\"{cx}mm\" cy=\"{cy}mm\" r=\"{self.r}mm\" ")
+        else:
+            out.write(f"<rect x=\"{cx - self.r}mm\" y=\"{cy - self.r}mm\" "
+                      f"width=\"{self.r * 2}mm\" height=\"{self.r * 2}mm\" ")
+        out.write(f"fill=\"{'black' if self.invert_color else 'none'}\" "
                   f"stroke=\"{'white' if self.invert_color else 'black'}\" "
                   f"stroke-width=\"0.1mm\" />")
 
