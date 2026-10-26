@@ -32,19 +32,15 @@ def _init_galaxy_transformer(props):
 def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mirrored=False):
     column = int(props.get("plate.column", 1))
     row = int(props.get("plate.row", 1))
-    # plate.frame-size は正方形枠の一辺、plate.frame-diameter は円形枠の直径。0 または省略時は自動計算。
-    if "plate.frame-size" in props and "plate.frame-diameter" in props:
-        raise ValueError("plate.frame-size（正方形）と plate.frame-diameter（円形）は、どちらか一方だけ書いてください。")
-    circular = "plate.frame-diameter" in props
-    frame_size = positive_number(props, "plate.frame-diameter" if circular else "plate.frame-size", 0.,
-                                 allow_zero=True)
+    # plate.frame-diameter は円形枠の直径。0 または省略時は自動計算。
+    frame_diameter = positive_number(props, "plate.frame-diameter", 0., allow_zero=True)
     invert_color = props.get("color.invert", "no").strip().lower() in {"y", "yes", "true"}
     # output/<設定ファイル名>/ の下で、白地に黒穴（normal）と黒地に白穴（inverted）を分ける。
     output_dir = output_directory(config_path, "inverted" if invert_color else "normal")
-    args = (column, row, frame_size / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings)
+    args = (column, row, frame_diameter / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings)
     if mirrored:
-        return PlateWriterPDF(*args, circular=circular, mirrored=True)
-    return PlateWriterPDF(*args, circular=circular) if pdf else PlateWriterSVG(*args, circular=circular)
+        return PlateWriterPDF(*args, mirrored=True)
+    return PlateWriterPDF(*args) if pdf else PlateWriterSVG(*args)
 
 
 def _column_properties(props):
@@ -86,12 +82,12 @@ def _column_headings(changes):
             for number, change in enumerate(changes, 1)]
 
 
-def _build_column(gaia, etching, transformer, frame_radius, circular=False):
+def _build_column(gaia, etching, transformer, frame_radius):
     """1列分の原盤一式の穴を配置し、``(穴, 穴の半径)`` を返します。"""
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
     print(f"円筒投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
           f"原盤距離 {transformer.plate / etching.scale:g} mm / 倍率 {etching.scale:g}")
-    builder = EtchingBuilder(transformer, etching, frame_radius, circular)
+    builder = EtchingBuilder(transformer, etching, frame_radius)
     print(f"Gaia G={gaia.bright:g}より暗く{gaia.faint:g}以下の光量を集計します。", flush=True)
     for sky_bin in iter_flux_bins(gaia, regions, limit):
         builder.add_bin(*sky_bin)
@@ -150,7 +146,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
     for number, (change, gaia, etching, transformer) in enumerate(columns, 1):
         if len(columns) > 1:
             print(f"列{number}: {', '.join(f'{k} = {v}' for k, v in change.items()) or '変更なし'}", flush=True)
-        results.append(_build_column(gaia, etching, transformer, writers[0].r, writers[0].circular))
+        results.append(_build_column(gaia, etching, transformer, writers[0].r))
     for writer in writers:
         with writer:
             writer.write_frames(2)
