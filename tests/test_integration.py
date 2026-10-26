@@ -41,7 +41,7 @@ class IntegrationTests(unittest.TestCase):
             configs = root / 'configs'
             write_cache(configs / 'cache', {0: [(30.05, .05, .01, 1)]})
             config = configs / 'custom.properties'
-            config.write_text('galaxy.gaia.input=cache\nplate.frame-size=60\ncolor.invert=y\n')
+            config.write_text('galaxy.gaia.input=cache\nplate.frame-diameter=60\ncolor.invert=y\n')
             result = self.run_command('gaia-etch', '--pdf', '-f', str(config), cwd=root)
             self.assertEqual(0, result.returncode, result.stderr)
             output = configs / 'output/custom/inverted'

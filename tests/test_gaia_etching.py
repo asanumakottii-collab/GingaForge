@@ -127,17 +127,15 @@ class EtchingTests(unittest.TestCase):
         self.assertTrue(all(max(abs(x), abs(y)) + builder.radius + .02 <= .1 for _, _, x, y in holes))
 
     def test_circular_frame_keeps_holes_inside_circle(self):
-        # 一辺10 mmの正方形と直径10 mmの円。円は正方形の角の穴を除く。
-        holes = {}
-        for circular in (False, True):
-            builder = EtchingBuilder(self.t, self.settings, 5., circular)
-            for lon in range(25, 36):
-                for lat in range(-5, 6):
-                    builder.add_sample(position(lon + .01, lat + .01), 1.)
-            holes[circular] = list(builder.build()[0])
+        # 直径10 mmの円。外接正方形の角に当たる光も足すが、円の外には穴を置かない。
+        builder = EtchingBuilder(self.t, self.settings, 5.)
+        for lon in range(25, 36):
+            for lat in range(-5, 6):
+                builder.add_sample(position(lon + .01, lat + .01), 1.)
+        holes = list(builder.build()[0])
         margin = builder.radius + .02
-        self.assertTrue(all(math.hypot(x, y) + margin <= 5. for _, _, x, y in holes[True]))
-        self.assertTrue(any(math.hypot(x, y) + margin > 5. for _, _, x, y in holes[False]))
+        self.assertTrue(holes)
+        self.assertTrue(all(math.hypot(x, y) + margin <= 5. for _, _, x, y in holes))
 
     def test_four_units_do_not_share_rounding_or_flux(self):
         builder = EtchingBuilder(self.t, self.settings, 69.25)
@@ -377,9 +375,10 @@ class GaiaCommandTests(unittest.TestCase):
             pages = sorted(output.glob("*.svg"))
             self.assertEqual(2, len(pages))
             self.assertEqual(pages, sorted(output.iterdir()))
-            circles = ET.parse(pages[0]).getroot().findall("{http://www.w3.org/2000/svg}circle")
-            self.assertGreater(len(circles), 0)
-            self.assertTrue(all(math.isclose(float(c.attrib["r"][:-2]), .01) for c in circles))
+            holes = [c for c in ET.parse(pages[0]).getroot().findall("{http://www.w3.org/2000/svg}circle")
+                     if not c.get("stroke")]
+            self.assertGreater(len(holes), 0)
+            self.assertTrue(all(math.isclose(float(c.attrib["r"][:-2]), .01) for c in holes))
 
     def test_missing_input_does_not_overwrite_existing_output(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -408,7 +407,7 @@ class GaiaCommandTests(unittest.TestCase):
         directory = Path(directory)
         write_cache(directory / "gaia", {0: [(30.05, .05, .05, 1)], 3: [(270.05, .05, .05, 1)]})
         config = directory / "galaxy.properties"
-        config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\nplate.row=2\nplate.frame-size=22\n"
+        config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\nplate.row=2\nplate.frame-diameter=22\n"
                           "galaxy.etch.flux-gain=1\n" + settings)
         return config
 
@@ -454,17 +453,17 @@ class GaiaCommandTests(unittest.TestCase):
             ("column.count=2\ncolumn.3.galaxy.etch.flux-gain=2\n", "1〜2"),
             ("column.count=2\ncolumn.x.galaxy.etch.flux-gain=2\n", "列番号"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gian=2\n", "列の指定なし"),
-            ("column.count=2\ncolumn.2.plate.frame-size=10\n", "全列共通"),
+            ("column.count=2\ncolumn.2.plate.frame-diameter=10\n", "全列共通"),
             ("column.count=2\ncolumn.2.color.invert=no\n", "全列共通"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\ncolumn.02.galaxy.etch.flux-gain=3\n", "重複"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=-1\n", "列2: galaxy.etch.flux-gain"),
             ("column.count=2\ngalaxy.gaia.faint-limit=17\ncolumn.2.galaxy.gaia.faint-limit=16\n",
              "galaxy.gaia.input"),
             # 原盤が列の幅（210 mm ÷ 列の数）に収まらない。
-            ("column.count=10\n", "plate.frame-size"),
-            ("column.count=4\nplate.frame-size=60\n", "plate.frame-size"),
+            ("column.count=10\n", "plate.frame-diameter"),
+            ("column.count=4\nplate.frame-diameter=60\n", "plate.frame-diameter"),
             # 原盤は収まるが、列の見出しが最上段の原盤名と重なる。
-            ("column.count=2\nplate.frame-size=60\ncolumn.2.galaxy.etch.flux-gain=2\n", "列の見出し"),
+            ("column.count=2\nplate.frame-diameter=60\ncolumn.2.galaxy.etch.flux-gain=2\n", "列の見出し"),
         )
         for settings, message in cases:
             with (self.subTest(settings=settings), tempfile.TemporaryDirectory() as directory,

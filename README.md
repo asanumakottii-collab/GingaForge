@@ -90,8 +90,7 @@ tests/                     テスト
 
 ## Gaiaエッチング原盤の担当領域
 
-`gaia-etch.properties` の `plate.frame-size` で、正方形原盤の一辺を出力上のmmで指定できます。Mellinger用の `mellinger-ohp.properties` とは独立した設定です。例えば `100` なら100 × 100 mmの枠になります。`0` または省略時は用紙サイズと配置数から自動計算し、標準配置では138.5 × 138.5 mmです。`scale` は枠サイズには掛かりません。SVG / PDFに適用され、Gaiaの穴配置も指定した枠内に制限されます。
-`plate.frame-size` の代わりに `plate.frame-diameter` を書くと、その直径（出力上のmm）の円形の枠になり、穴も円の内側だけに配置します（同梱の `gaia-ohp.properties` は直径30 mm）。両方を書くとエラーです。
+Gaiaの原盤枠は円形です。`plate.frame-diameter` で、円の直径を出力上のmmで指定できます（同梱の `gaia-ohp.properties` は直径30 mm）。Mellinger用の `mellinger-ohp.properties` とは独立した設定です。`0` または省略時は用紙サイズと配置数から自動計算し、標準配置（同梱の `gaia-etch.properties`）では直径138.5 mmです。`scale` は枠の大きさには掛かりません。SVG / PDFに適用され、Gaiaの穴も円の内側だけに配置します。
 
 `GalaxyTransformer` は星表のICRS赤道座標を銀河座標へ変換し、**銀緯 −20度以上 +20度以下**の星を次の4枚に割り当てます。銀経は0度以上360度未満に正規化し、共有する境界上の星が重複しないよう、各区間の下端を含み上端を含めません。
 

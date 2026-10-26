@@ -104,7 +104,7 @@ class GalaxyTransformerTests(unittest.TestCase):
 
 
 class GalaxyOutputTests(unittest.TestCase):
-    def test_configured_frame_size_in_svg_and_pdf(self):
+    def test_configured_frame_diameter_in_svg_and_pdf(self):
         for pdf in (False, True):
             if pdf and not importlib.util.find_spec("reportlab"):
                 continue
@@ -113,21 +113,19 @@ class GalaxyOutputTests(unittest.TestCase):
                     with tempfile.TemporaryDirectory() as directory:
                         props = {"scale": "2"}
                         if configured is not None:
-                            props["plate.frame-size"] = configured
+                            props["plate.frame-diameter"] = configured
                         with _init_plate_writer(props, Path(directory, "gaia-etch.properties"), pdf) as writer:
                             self.assertEqual(expected, writer.r)
                             writer.write_frames(2)
                         if not pdf:
                             for page in Path(directory, "output", "gaia-etch", "normal").glob("*.svg"):
-                                for rect in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}rect"):
-                                    self.assertEqual(f"{expected * 2}mm", rect.get("width"))
-                                    self.assertEqual(f"{expected * 2}mm", rect.get("height"))
+                                for frame in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}circle"):
+                                    self.assertEqual(f"{expected}mm", frame.get("r"))
 
     def test_configured_frame_diameter_draws_circle(self):
         with tempfile.TemporaryDirectory() as directory:
             props = {"plate.frame-diameter": "30", "color.invert": "yes"}
             with _init_plate_writer(props, Path(directory, "gaia-ohp.properties")) as writer:
-                self.assertTrue(writer.circular)
                 self.assertEqual(15., writer.r)
                 writer.write_frames(2)
                 # 円の内側、外接正方形の角（円の外側）、円の外側。
@@ -142,14 +140,6 @@ class GalaxyOutputTests(unittest.TestCase):
             self.assertEqual(["15.0mm"] * 2, [c.get("r") for c in frames])
             self.assertEqual(1, len(circles) - len(frames))
 
-    def test_frame_size_and_diameter_are_exclusive(self):
-        with self.assertRaisesRegex(ValueError, "plate.frame-diameter"):
-            _init_plate_writer({"plate.frame-size": "30", "plate.frame-diameter": "30"}, "gaia-ohp.properties")
-        for value in ("-1", "nan"):
-            with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "plate.frame-diameter"):
-                    _init_plate_writer({"plate.frame-diameter": value}, "gaia-ohp.properties")
-
     def test_config_name_and_color_invert_select_output(self):
         for value, folder in (("no", "normal"), ("yes", "inverted"), ("y", "inverted")):
             with self.subTest(value=value):
@@ -157,22 +147,22 @@ class GalaxyOutputTests(unittest.TestCase):
                 self.assertEqual(Path("configs", "output", "gaia-ohp", folder), writer.output_dir)
                 self.assertEqual("gaia-ohp-", writer.filename_prefix)
 
-    def test_invalid_frame_size_is_rejected(self):
+    def test_invalid_frame_diameter_is_rejected(self):
         for value in ("-1", "nan", "inf"):
             with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "plate.frame-size"):
-                    _init_plate_writer({"plate.frame-size": value}, "gaia-etch.properties")
+                with self.assertRaisesRegex(ValueError, "plate.frame-diameter"):
+                    _init_plate_writer({"plate.frame-diameter": value}, "gaia-etch.properties")
 
     def test_holes_outside_frame_are_skipped(self):
         with tempfile.TemporaryDirectory() as directory:
             with _init_plate_writer({}, Path(directory, "gaia-etch.properties")) as writer:
                 writer.write_frames(2)
-                writer.write_hole(0, 0, writer.r, -writer.r, .01)
+                writer.write_hole(0, 0, 0., -writer.r, .01)
                 writer.write_hole(0, 0, writer.r + .01, 0., .01)
                 writer.write_hole(1, 1, 0., math.nan, .01)
-            circles = [c for page in Path(directory, "output", "gaia-etch", "normal").glob("*.svg")
-                       for c in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}circle")]
-            self.assertEqual(1, len(circles))
+            holes = [c for page in Path(directory, "output", "gaia-etch", "normal").glob("*.svg")
+                     for c in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}circle") if not c.get("stroke")]
+            self.assertEqual(1, len(holes))
 
     def test_svg_creates_all_four_frames_without_stars(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -182,7 +172,7 @@ class GalaxyOutputTests(unittest.TestCase):
             self.assertEqual(["gaia-etch-0.svg", "gaia-etch-1.svg"], [p.name for p in pages])
             for page, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):
                 root = ET.parse(page).getroot()
-                self.assertEqual(2, len(root.findall("{http://www.w3.org/2000/svg}rect")))
+                self.assertEqual(2, len(root.findall("{http://www.w3.org/2000/svg}circle")))
                 self.assertEqual(labels, [e.text for e in root.findall("{http://www.w3.org/2000/svg}text")])
 
     @unittest.skipUnless(importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
