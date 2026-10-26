@@ -18,8 +18,10 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-"""原板データをSVGまたは印刷用ベクトルPDFとして書き出すモジュールです。"""
+"""原板データをSVGまたは印刷用PDFとして書き出すモジュールです。穴はベクトル、開口率の画像は画素で書き出します。"""
 
+import base64
+from io import BytesIO
 import math
 import os
 import tempfile
@@ -131,6 +133,20 @@ class _PlateWriterBase:
         out = self.outs[index // (self.column * self.row)]
         self._draw_hole(out, self._get_cx(index, column) + x, self._get_cy(dir_, index) + y, r)
 
+    def write_image(self, dir_, index, pixels, left, top, width, height, column=0):
+        """列 column の原盤に、開口率の画像 pixels（uint8、255が光を通す）を枠の円で切り抜いて出力します。
+
+        left・top は原盤中心から画像の左上まで、width・height は画像の大きさ (mm)。
+        白地に黒穴（color.invert = no）では、光を通す所を黒にするため値を反転します。
+        """
+        from PIL import Image
+
+        self._write_frame(index, column)
+        out = self.outs[index // (self.column * self.row)]
+        image = Image.fromarray(pixels if self.invert_color else 255 - pixels, "L")
+        cx, cy = self._get_cx(index, column), self._get_cy(dir_, index)
+        self._draw_image(out, cx, cy, image, cx + left, cy + top, width, height)
+
     def __enter__(self):
         return self
 
@@ -191,6 +207,17 @@ class PlateWriterPDF(_PlateWriterBase):
         out.setFillGray(1 if self.invert_color else 0)
         out.circle(self._x(x), self._y(y), self._x(r), stroke=0, fill=1)
 
+    def _draw_image(self, out, cx, cy, image, x, y, width, height):
+        from reportlab.lib.utils import ImageReader
+
+        out.saveState()
+        frame = out.beginPath()
+        frame.circle(self._x(cx), self._y(cy), self._x(self.r))
+        out.clipPath(frame, stroke=0, fill=0)
+        # DeviceGray・補間なしで埋め込むため、画素がそのままプリンターの点に対応する。
+        out.drawImage(ImageReader(image), self._x(x), self._y(y + height), self._x(width), self._x(height))
+        out.restoreState()
+
     def close(self):
         for index, out in enumerate(self.outs):
             destination = self._pdf_path(index)
@@ -240,6 +267,17 @@ class PlateWriterSVG(_PlateWriterBase):
     def _draw_hole(self, out, x, y, r):
         out.write(f"<circle cx=\"{x}mm\" cy=\"{y}mm\" r=\"{r}mm\" "
                   f"fill=\"{'white' if self.invert_color else 'black'}\"/>")
+
+    def _draw_image(self, out, cx, cy, image, x, y, width, height):
+        # 切り抜きの名前は枠の中心で決める（1つの枠に画像は1枚）。
+        clip = f"frame-{cx:.4f}-{cy:.4f}"
+        png = BytesIO()
+        image.save(png, "PNG", optimize=True)
+        data = base64.b64encode(png.getvalue()).decode("ascii")
+        out.write(f"<clipPath id=\"{clip}\"><circle cx=\"{cx}mm\" cy=\"{cy}mm\" r=\"{self.r}mm\"/></clipPath>"
+                  f"<image x=\"{x}mm\" y=\"{y}mm\" width=\"{width}mm\" height=\"{height}mm\" "
+                  f"preserveAspectRatio=\"none\" image-rendering=\"optimizeSpeed\" clip-path=\"url(#{clip})\" "
+                  f"xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:href=\"data:image/png;base64,{data}\"/>")
 
     def close(self):
         for out in self.outs:

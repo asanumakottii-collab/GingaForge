@@ -78,9 +78,9 @@ docs/                      ドキュメント
 | `gaia_etch.py` | Gaia原盤の生成 |
 | `galaxy_geometry.py` | 共通の領域定義、Gaiaの円筒投影・逆投影 |
 | `gaia_catalog.py` | Gaia DR3光量マップの取得・キャッシュ検証 |
-| `galaxy_etching.py` | 光量の集計、穴の配置、天の川強調 |
+| `galaxy_etching.py` | 光量の集計、穴の配置、開口率の画像（階調・点描）、天の川強調 |
 | `models.py` / `mathvector.py` | 座標データ、ICRSと銀河座標の変換 |
-| `plate_writer.py` | 穴原盤のSVG・ベクトルPDF |
+| `plate_writer.py` | 原盤のSVG・PDF（穴はベクトル、画像は画素） |
 | `config.py` | プロパティファイルの読込、リポジトリのルート |
 
 ## テスト
