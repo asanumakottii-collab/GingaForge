@@ -10,7 +10,7 @@ from pypdf.generic import ContentStream
 
 from gingaforge import ohp, starnet_setup
 from gingaforge.config import PROJECT_ROOT as ROOT
-from gingaforge.ohp import (REGIONS, read_config, geometry, plate_to_sky,
+from gingaforge.ohp import (REGIONS, read_config, geometry, plate_to_sky, relative_solid_angle,
                             celestial_wcs, bilinear, reproject, tone_map, build,
                             channel_mix, gaussian_blur, read_hipparcos, icrs_to_galactic,
                             star_disks, remove_projected_stars, starnet)
@@ -31,8 +31,24 @@ class MasterChecks(unittest.TestCase):
         self.assertAlmostEqual(1., 19. * (1 / lens + 1 / (6500. - 50. - lens)), places=12)
         self.assertAlmostEqual(50. + lens, offset)
         self.assertAlmostEqual(lens, 19.0563, places=4)
-        self.assertAlmostEqual(width, 14.0305, places=4)
-        self.assertAlmostEqual(height, 20.1600, places=4)
+        # 平らな原板で、四隅（銀経±30度・銀緯±20度）が写る位置で決まる長方形。
+        self.assertAlmostEqual(width, 16.2297, places=4)
+        self.assertAlmostEqual(height, 22.2954, places=4)
+
+    def test_relative_solid_angle_matches_sky_area(self):
+        p, _, scale, _, width, height = geometry(self.cfg)
+        h = .01
+        def sky_area(x, y):
+            # 原盤上の h 四方が写る空の立体角を、銀経・銀緯の差から求める。
+            l, b = plate_to_sky(np.array([x - h/2, x + h/2, x, x]), np.array([y, y, y - h/2, y + h/2]), 30., p, scale)
+            dl, db = np.radians((l[[2, 3]] - 30 + 180) % 360 - 180), np.radians(b[[0, 1]])
+            return abs((dl[1] - dl[0]) * (db[1] - db[0])) * np.cos(np.radians(plate_to_sky(x, y, 30., p, scale)[1]))
+        center = sky_area(0., 0.)
+        for x, y in ((0., 0.), (width/2, 0.), (0., height/2), (width/2, height/2)):
+            with self.subTest(x=x, y=y):
+                self.assertAlmostEqual(float(relative_solid_angle(x, y, p, scale)), sky_area(x, y) / center, places=3)
+        # 四隅では、中央の約半分の空が原盤の同じ面積に写る。
+        self.assertAlmostEqual(.53, float(relative_solid_angle(width/2, height/2, p, scale)), places=2)
 
     def test_print_scale_shrinks_whole_geometry(self):
         cfg = read_config(ROOT / 'mellinger-ohp.properties')
@@ -48,12 +64,15 @@ class MasterChecks(unittest.TestCase):
     def test_boundary_orientation_and_source_wcs(self):
         p, bmax, scale, _, width, height = geometry(self.cfg)
         for start, end in REGIONS.values():
-            # 上下の辺の中央が担当領域の銀経の端、左右の辺の中央が銀緯の端。
-            l, b = plate_to_sky(np.array([0, 0, 0, -width/2, width/2]),
-                                np.array([-height/2, 0, height/2, 0, 0]),
+            # 画像の四隅が担当領域の四隅。上が銀経の小さい側、右が銀緯のプラス側。
+            l, b = plate_to_sky(np.array([-width/2, width/2, -width/2, width/2, 0]),
+                                np.array([-height/2, -height/2, height/2, height/2, 0]),
                                 (start+end)/2, p, scale)
-            np.testing.assert_allclose(l, [end % 360, (start+end)/2, start, (start+end)/2, (start+end)/2], atol=1e-10)
-            np.testing.assert_allclose(b, [0, 0, 0, -bmax, bmax], atol=1e-10)
+            np.testing.assert_allclose((l - [end, end, start, start, (start+end)/2] + 180) % 360 - 180, 0, atol=1e-10)
+            np.testing.assert_allclose(b, [-bmax, bmax, -bmax, bmax, 0], atol=1e-10)
+            # 平らな原板では、辺の中央は担当領域の外になる（reproject() で黒にする）。
+            _, b_side = plate_to_sky(np.array([width/2]), np.array([0.]), (start+end)/2, p, scale)
+            self.assertGreater(b_side[0], bmax)
             x, y = self.wcs.world_to_pixel_values(l, b)
             actual_l, actual_b = self.wcs.pixel_to_world_values(x, y)
             np.testing.assert_allclose((actual_l-l+180) % 360 - 180, 0, atol=1e-8)
@@ -72,11 +91,15 @@ class MasterChecks(unittest.TestCase):
             linear = reproject(data, self.wcs, start, end, cfg)
             self.assertTrue(np.all(np.isfinite(linear)))
             ny, nx = linear.shape
-            for row, col in [(0, 0), (ny//2, nx//2), (ny-1, nx-1), (ny//3, nx//4)]:
+            for row, col in [(ny//2, nx//2), (ny//3, nx//4), (ny//2, nx-1), (0, nx//2)]:
                 x, y = (col+.5)/nx*width-width/2, (row+.5)/ny*height-height/2
                 l, b = plate_to_sky(x, y, (start+end)/2, p, scale)
+                inside = (l - start) % 360 < end - start and abs(b) <= 20
                 sx, sy = self.wcs.world_to_pixel_values(l, b)
-                self.assertAlmostEqual(float(linear[row, col])/float(bilinear(data, sx, sy)), 1, places=6)
+                expected = float(bilinear(data, sx, sy) * relative_solid_angle(x, y, p, scale)) if inside else 0.
+                self.assertAlmostEqual(float(linear[row, col]), expected, delta=abs(expected) * 1e-6)
+            # 銀緯方向の辺の中央は担当領域の外なので黒（0）。
+            self.assertEqual(0, linear[ny//2, nx-1])
             pixels = tone_map(linear, cfg)
             self.assertEqual(np.uint8, pixels.dtype)
             self.assertEqual(linear.shape, pixels.shape)

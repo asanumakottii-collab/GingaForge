@@ -165,9 +165,13 @@ class EtchingTests(unittest.TestCase):
         return 200 * 60
 
     @staticmethod
-    def largest_step_between_neighbours(builder):
+    def per_solid_angle(builder):
+        """セルの光量を、セルが写る空の広さで割ったもの（平らな原板では端ほど空が原盤上で広がる）。"""
+        return {key: value / builder._solid_angle_deg2(key[:2], *key[2:]) for key, value in builder.cells.items()}
+
+    @staticmethod
+    def largest_step_between_neighbours(cells):
         """光量のあるセル（端の3列・3行を除く）で、銀経方向に隣り合うセルの光量の比の最大のずれ。"""
-        cells = builder.cells
         ixs, iys = sorted({k[2] for k in cells}), sorted({k[3] for k in cells})
         unit = next(iter(cells))[:2]
         worst = 0.
@@ -184,10 +188,11 @@ class EtchingTests(unittest.TestCase):
         point = EtchingBuilder(lens_at_projector(), settings, 69.25)
         count = self.uniform_sky((area, point), 20., -3., add_point=point)
         self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
-        self.assertAlmostEqual(.25, self.largest_step_between_neighbours(point), places=9)
-        self.assertLess(self.largest_step_between_neighbours(area), 1e-9)
-        # 銀緯方向も含め、内側のセルはほぼ同じ光量（tan b による伸びの差だけ）。
-        inner = [v for (_, _, ix, iy), v in area.cells.items() if -5 <= ix <= 4 and -20 <= iy <= 19]
+        self.assertAlmostEqual(.25, self.largest_step_between_neighbours(point.cells), places=9)
+        # セルの立体角は差分による近似なので、その誤差（1e-4程度）は残る。縞の0.25よりずっと小さい。
+        self.assertLess(self.largest_step_between_neighbours(self.per_solid_angle(area)), 1e-3)
+        # 銀緯方向も含め、内側のセルは写る空の広さあたり同じ光量。
+        inner = [v for (_, _, ix, iy), v in self.per_solid_angle(area).items() if -5 <= ix <= 4 and -20 <= iy <= 19]
         self.assertLess(max(inner) / min(inner), 1.01)
 
     def test_uniform_sky_bins_with_projector_offset(self):
@@ -197,16 +202,18 @@ class EtchingTests(unittest.TestCase):
         count = self.uniform_sky((area, point), 80., 10., add_point=point)
         self.assertEqual({(0, 1)}, {key[:2] for key in area.cells})
         self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
-        self.assertGreater(self.largest_step_between_neighbours(point), .2)
-        self.assertLess(self.largest_step_between_neighbours(area), .005)
+        self.assertGreater(self.largest_step_between_neighbours(point.cells), .2)
+        self.assertLess(self.largest_step_between_neighbours(self.per_solid_angle(area)), .005)
 
     def test_bin_is_split_by_overlap_area(self):
         builder = EtchingBuilder(lens_at_projector(), EtchingSettings(cell_mm=.4), 69.25)
-        # 原盤中心（セルの角）をまたぐビン。レンズ中心がドーム中心なら x = L tan b、y = -L (l - 30度)。
+        # 原盤中心（セルの角）をまたぐビン。レンズ中心がドーム中心なら、平らな原板では
+        # x = L tan b / cos(l - 30度)、y = -L tan(l - 30度)。ビンの像は各辺の両端の平均の長方形とみなす。
         builder.add_bin(29.96, 30.06, -.04, .06, 1.)
-        tan = lambda degrees: math.tan(math.radians(degrees))
-        x_fraction = {-1: tan(.04) / (tan(.04) + tan(.06)), 0: tan(.06) / (tan(.04) + tan(.06))}
-        y_fraction = {-1: .6, 0: .4}
+        tan, cos = (lambda f: lambda degrees: f(math.radians(degrees)))(math.tan), (lambda d: math.cos(math.radians(d)))
+        edge = lambda b: (tan(b) / cos(-.04) + tan(b) / cos(.06)) / 2
+        x_fraction = {-1: -edge(-.04) / (edge(.06) - edge(-.04)), 0: edge(.06) / (edge(.06) - edge(-.04))}
+        y_fraction = {-1: tan(.06) / (tan(.04) + tan(.06)), 0: tan(.04) / (tan(.04) + tan(.06))}
         expected = {(0, 0, ix, iy): x_fraction[ix] * y_fraction[iy] for ix in (-1, 0) for iy in (-1, 0)}
         self.assertEqual(set(expected), set(builder.cells))
         for key, fraction in expected.items():
@@ -240,13 +247,15 @@ class EtchingTests(unittest.TestCase):
                 EtchingSettings.from_properties({key: value})
 
     def milky_way_builder(self, **settings):
-        builder = EtchingBuilder(self.t, EtchingSettings(**settings), 69.25)
+        # 原盤上 ±8 mm の範囲を使うので、空の角度が小さく済む原板とレンズの距離50 mmで調べる。
+        transformer = lens_at_projector()
+        builder = EtchingBuilder(transformer, EtchingSettings(**settings), 69.25)
         # 銀緯方向(x)に明るさが落ちる帯と、外側の明るい星1つ。
         for ix in range(-20, 20):
             for iy in range(-10, 10):
                 x = (ix + .5) * builder.cell
                 flux = .02 + .1 * math.exp(-(x / 1.5) ** 2) + (.4 if (ix, iy) == (-18, 0) else 0.)
-                builder.add_sample(self.t.inverse_transform_unit(x, (iy + .5) * builder.cell, 0, 0), flux)
+                builder.add_sample(transformer.inverse_transform_unit(x, (iy + .5) * builder.cell, 0, 0), flux)
         return builder
 
     def test_milky_way_enhancement_darkens_background_and_keeps_band(self):

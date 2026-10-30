@@ -87,7 +87,7 @@ def _column_headings(changes):
 def _build_column(gaia, etching, transformer, frame_radius):
     """1列分の原盤一式の穴を配置し、``(穴, 穴の半径)`` を返します。"""
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
-    print(f"円筒投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
+    print(f"平らな原板への投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
           f"原盤距離 {transformer.plate / etching.scale:g} mm / "
           f"焦点距離 {transformer.focus / etching.scale:g} mm / 倍率 {etching.scale:g}")
     lens = [transformer.lens_distance(*divmod(region, 2)) for region in range(len(regions))]
@@ -158,7 +158,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
             for column, (holes, radius) in enumerate(results):
                 for dir_, index, x, y in holes:
                     writer.write_hole(dir_, index, x, y, radius, column)
-    print(f"生成完了: {writers[0].output_dir}")
+    print("生成完了d(￣ ￣) ｳｪｰｲ")
     return writers[0].output_dir
 
 

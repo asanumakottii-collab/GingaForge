@@ -1,5 +1,5 @@
 # Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
-"""Mellinger全天画像を中心配置の円筒投影へ再投影し、OHPフィルム用の原盤PDFを生成する。
+"""Mellinger全天画像を、中心配置の投影機の平らな原板へ再投影し、OHPフィルム用の原盤PDFを生成する。
 
 FITSの青・緑・赤を重み付きで混ぜ、StarNet2で星と天の川の光に分ける。恒星投影機・1等星投影機が
 映すHipparcosの星（V等級が上限以下）は除き、それより暗い星の光はぼかして天の川の光に戻す。
@@ -60,13 +60,28 @@ def geometry(cfg):
         raise ValueError("This OHP renderer supports only the centered projector")
     lens = lens_distance(sphere - plate, focus)
     offset = plate + lens
-    # 原盤の端は、レンズ中心から見たドーム上の銀経±30度・銀緯±bmaxの点。
-    b = math.radians(bmax)
-    width = 2 * lens * sphere * math.sin(b) / (sphere * math.cos(b) - offset) * scale
-    height = 2 * lens * math.atan2(sphere * math.sin(math.radians(30)), sphere * math.cos(math.radians(30)) - offset) * scale
+    # 平らな原板では担当領域の像は両端が広がった形になる。画像は、四隅（ドーム上の銀経±30度・銀緯±bmaxの点）が
+    # 写る位置で決まる長方形で、担当領域の外は reproject() で黒にする。
+    b, half = math.radians(bmax), math.radians(30)
+    forward = sphere * math.cos(b) * math.cos(half) - offset
+    width = 2 * lens * sphere * math.sin(b) / forward * scale
+    height = 2 * lens * sphere * math.cos(b) * math.sin(half) / forward * scale
     if width > FRAME_SIDE - 16 or height > FRAME_SIDE - 52:
         raise ValueError(f"Image and labels do not fit the {FRAME_SIDE:g} mm frame of the 2 x 2 layout")
     return (lens, offset, sphere), bmax, scale, dpi, width, height
+
+
+def _dome_point(x_mm, y_mm, projection, scale):
+    """原盤上の点からレンズ中心を通る光線がドームに当たる点の、ドーム中心からの
+    ``(原盤中心の方向, 銀経の増える方向, 銀北極の方向)`` の成分（倍率を掛ける前のmm）。"""
+    lens, offset, sphere = projection
+    # 平らな原板なので、光線の傾きは原盤上の位置に比例する。
+    east, north = -np.asarray(y_mm) / (lens * scale), np.asarray(x_mm) / (lens * scale)
+    norm = np.sqrt(1 + east * east + north * north)
+    forward, east, north = 1 / norm, east / norm, north / norm
+    along = offset * forward
+    distance = -along + np.sqrt(along * along + sphere * sphere - offset * offset)
+    return offset + distance * forward, distance * east, distance * north
 
 
 def plate_to_sky(x_mm, y_mm, center_deg, projection, scale=1.):
@@ -74,18 +89,27 @@ def plate_to_sky(x_mm, y_mm, center_deg, projection, scale=1.):
 
     projection は geometry() が返す ``(原板とレンズの距離, ドーム中心からレンズ中心までの距離, ドーム半径)``。
     """
-    lens, offset, sphere = projection
-    angle = -np.asarray(y_mm) / (lens * scale)
-    # 原盤中心の方向・銀経の増える方向・銀北極の方向の成分。
-    forward, east, north = np.cos(angle), np.sin(angle), np.asarray(x_mm) / (lens * scale)
-    norm = np.sqrt(1 + north * north)
-    forward, east, north = forward / norm, east / norm, north / norm
-    along = offset * forward
-    distance = -along + np.sqrt(along * along + sphere * sphere - offset * offset)
-    forward = offset + distance * forward
-    east, north = distance * east, distance * north
+    forward, east, north = _dome_point(x_mm, y_mm, projection, scale)
     return ((center_deg + np.degrees(np.arctan2(east, forward))) % 360.,
             np.degrees(np.arctan2(north, np.hypot(forward, east))))
+
+
+def relative_solid_angle(x_mm, y_mm, projection, scale=1.):
+    """原盤上の単位面積が写る空の広さ（ドーム中心から見た立体角）の、原盤中心に対する比。
+
+    平らな原板では端ほど空が原盤上で広がる（立体角が小さくなる）。透過率にこの比を掛けると、
+    原盤の各部を通る光が、写る空の広さに比例する。
+    """
+    h = 1e-3 * projection[0] * scale  # 中心差分の幅（原板とレンズの距離の1/1000）。
+
+    def area(x, y):
+        def unit(dx, dy):
+            v = np.stack(_dome_point(x + dx, y + dy, projection, scale))
+            return v / np.linalg.norm(v, axis=0)
+        normal = np.cross(unit(h, 0) - unit(-h, 0), unit(0, h) - unit(0, -h), axis=0)
+        return np.linalg.norm(normal, axis=0)
+
+    return area(np.asarray(x_mm, dtype=float), np.asarray(y_mm, dtype=float)) / area(np.zeros(1), np.zeros(1))[0]
 
 
 def celestial_wcs(header):
@@ -225,7 +249,8 @@ def bilinear(data, x, y):
 
 
 def reproject(data, wcs, start, end, cfg):
-    projection, _, scale, dpi, width, height = geometry(cfg)
+    """担当領域を原盤の画像へ再投影する。写る空の広さで補正し、担当領域の外は0（黒）にする。"""
+    projection, bmax, scale, dpi, width, height = geometry(cfg)
     nx, ny = round(width / 25.4 * dpi), round(height / 25.4 * dpi)
     x = (np.arange(nx) + .5) / nx * width - width / 2
     output = np.empty((ny, nx), dtype=np.float32)
@@ -234,7 +259,9 @@ def reproject(data, wcs, start, end, cfg):
         xx, yy = np.meshgrid(x, y)
         longitude, latitude = plate_to_sky(xx, yy, (start + end) / 2, projection, scale)
         sx, sy = wcs.world_to_pixel_values(longitude, latitude)
-        output[row:row + len(y)] = bilinear(data, sx, sy)
+        inside = ((longitude - start) % 360. < end - start) & (np.abs(latitude) <= bmax)
+        values = bilinear(data, sx, sy) * relative_solid_angle(xx, yy, projection, scale)
+        output[row:row + len(y)] = np.where(inside, values, 0.)
     if not np.all(np.isfinite(output)):
         raise ValueError("Source contains nonfinite values in the requested region")
     return output
