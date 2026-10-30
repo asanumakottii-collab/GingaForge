@@ -18,7 +18,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-"""OHP・Gaia原盤で共有する担当領域と円筒投影。"""
+"""OHP・Gaia原盤で共有する担当領域と、平らな原板へのレンズ中心からの投影。"""
 
 import math
 from .mathvector import MathVector
@@ -69,7 +69,7 @@ class GalaxyTransformer:
         # 投影機の位置は従来どおり赤道座標の(0, ±水平距離, ±垂直距離)。
         # 各担当領域の銀経中央・銀緯0度への光線を原盤中心に合わせる。
         # OTLと同じく、原板は投影機中心から plate の位置にあり、レンズはその先に、
-        # 原板とレンズの距離がレンズの公式を満たす位置にある。円筒投影の半径は原板とレンズの距離。
+        # 原板とレンズの距離がレンズの公式を満たす位置にある。原板は平らで、原盤中心の方向に垂直。
         galactic_north = SpherePosition.from_galactic(0., 90.).to_vector(1.)
         self._plate_geometry = {}
         for region, (start, end) in enumerate(self.LONGITUDE_REGIONS):
@@ -117,27 +117,30 @@ class GalaxyTransformer:
         return self.transform_unit(sp, *unit)
 
     def lens_distance(self, dir_, index):
-        """原盤 ``(出力位置, 番号)`` の原板とレンズの距離（円筒投影の半径）。"""
+        """原盤 ``(出力位置, 番号)`` の原板とレンズの距離。"""
         return self._plate_geometry[dir_, index][1]
 
     def transform_unit(self, sp, dir_, index):
-        """担当領域の中央を基準に、レンズ中心からの円筒投影で原盤座標へ変換します。"""
+        """担当領域の中央を基準に、レンズ中心を通る光線で平らな原板の座標へ変換します。
+
+        OTLの恒星原板と同じく、原板上の位置は光線の傾きの tan に比例する。
+        """
         lens_center, lens, forward, east, north = self._plate_geometry[dir_, index]
         ray = sp.to_vector(self.sphere).minus(lens_center)
         x, y, z = ray.dot(forward), ray.dot(east), ray.dot(north)
+        if x <= 0:
+            raise ValueError("レンズの後ろの点は原板に写りません。")
         pp = PlatePosition()
         pp.index = index
         pp.dir = dir_
-        pp.xmm = lens * z / math.hypot(x, y)
-        pp.ymm = -lens * math.atan2(y, x)
+        pp.xmm = lens * z / x
+        pp.ymm = -lens * y / x
         return pp
 
     def inverse_transform_unit(self, xmm, ymm, dir_, index):
-        """原盤上の点から、同じ円筒投影の光線とドームの交点を求める。"""
+        """原盤上の点から、レンズ中心を通る光線とドームの交点を求める。"""
         lens_center, lens, forward, east, north = self._plate_geometry[dir_, index]
-        angle = -ymm / lens
-        ray = (forward.mult_scalar(math.cos(angle))
-               .plus(east.mult_scalar(math.sin(angle)))
+        ray = (forward.plus(east.mult_scalar(-ymm / lens))
                .plus(north.mult_scalar(xmm / lens))).unit_vector()
         dot = lens_center.dot(ray)
         discriminant = dot * dot + self.sphere ** 2 - lens_center.dot(lens_center)

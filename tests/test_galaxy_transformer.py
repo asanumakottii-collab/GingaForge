@@ -93,8 +93,8 @@ class GalaxyTransformerTests(unittest.TestCase):
             with self.subTest(image=image, focus=focus), self.assertRaisesRegex(ValueError, "焦点距離"):
                 lens_distance(image, focus)
 
-    def test_cylindrical_projection_scale_and_direction(self):
-        # 中心配置。レンズ中心は原盤中心の方向に plate + lens だけ出ている。
+    def test_flat_plate_projection_scale_and_direction(self):
+        # 中心配置。レンズ中心は原盤中心の方向に plate + lens だけ出ていて、原板は平ら。
         transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
         lens = lens_distance(6500. - 50., 19.)
         offset = 50. + lens
@@ -107,16 +107,20 @@ class GalaxyTransformerTests(unittest.TestCase):
                     b, dl = math.radians(latitude), math.radians(delta_l)
                     forward = 6500. * math.cos(b) * math.cos(dl) - offset
                     east, north = 6500. * math.cos(b) * math.sin(dl), 6500. * math.sin(b)
-                    self.assertAlmostEqual(lens * north / math.hypot(forward, east), position.xmm, places=10)
-                    self.assertAlmostEqual(-lens * math.atan2(east, forward), position.ymm, places=10)
+                    self.assertAlmostEqual(lens * north / forward, position.xmm, places=10)
+                    self.assertAlmostEqual(-lens * east / forward, position.ymm, places=10)
 
-    def test_default_focal_length_gives_about_20_mm_plates(self):
+    def test_default_focal_length_gives_about_22_mm_plates(self):
         transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
         self.assertAlmostEqual(19.0563, transformer.lens_distance(0, 0), places=4)
         top, bottom = (transformer.transform_unit(_position(l), 0, 0) for l in (0., 60.))
         side = transformer.transform_unit(_position(30., 20.), 0, 0)
-        self.assertAlmostEqual(20.16, top.ymm - bottom.ymm, places=2)
+        corner = transformer.transform_unit(_position(0., 20.), 0, 0)
+        self.assertAlmostEqual(22.28, top.ymm - bottom.ymm, places=2)
+        # 平らな原板では、銀緯±20度の境界は両端ほど広がる。
         self.assertAlmostEqual(14.03, 2 * side.xmm, places=2)
+        self.assertAlmostEqual(16.23, 2 * corner.xmm, places=2)
+        self.assertLess(math.hypot(corner.xmm, corner.ymm), 15.)  # gaia-ohp の直径30 mmの枠に収まる
 
     def test_scale_shrinks_whole_geometry(self):
         for horizontal, vertical in ((0., 0.), (355., 200.)):
