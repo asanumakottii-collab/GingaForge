@@ -29,13 +29,27 @@ REGIONS = {"N0": (0., 60.), "N1": (60., 120.),
 LATITUDE_LIMIT = 20.
 
 
+def lens_distance(image, focus):
+    """原板とレンズの距離。
+
+    原板から像（ドーム）までの距離 image と焦点距離 focus から、OTLと同じくレンズの公式
+    1/focus = 1/x + 1/(image - x) の小さい方の解 x を返す。
+    """
+    discriminant = image * image / 4 - image * focus
+    if not (focus > 0 and discriminant >= 0):
+        raise ValueError("焦点距離が長すぎて、ドームに像を結べません。"
+                         "焦点距離を、原板からドームまでの距離の1/4以下にしてください。")
+    # 2解の積が image * focus であることを使い、桁落ちを避けて小さい方の解を求める。
+    return image * focus / (image / 2 + math.sqrt(discriminant))
+
+
 class GalaxyTransformer:
     # (N0, N1, S0, S1) の順。N/Sは出力用紙上の位置を表し、銀緯の正負ではない。
     LONGITUDE_REGIONS = tuple(REGIONS.values())
     LATITUDE_LIMIT = LATITUDE_LIMIT
     _ANGLE_EPS = 1e-10  # 度。座標回転の丸め誤差を吸収する。
 
-    def __init__(self, radius, sphere, projector_horizontal, projector_vertical, plate):
+    def __init__(self, radius, sphere, projector_horizontal, projector_vertical, plate, focus):
         """
         座標変換のパラメータを設定します。
         :param radius: 7.5等星の半径
@@ -43,15 +57,19 @@ class GalaxyTransformer:
         :param projector_horizontal: ドームの中心から投影機中心へのベクトルの赤道面に平行な成分
         :param projector_vertical: ドームの中心から投影機中心へのベクトルの赤道面に垂直な成分
         :param plate: 投影機中心と原版中心の間の距離
+        :param focus: 焦点の距離
         """
         self.radius = radius
         self.sphere = sphere
         self.projector_vertical = projector_vertical
         self.projector_horizontal = projector_horizontal
         self.plate = plate
+        self.focus = focus
 
         # 投影機の位置は従来どおり赤道座標の(0, ±水平距離, ±垂直距離)。
         # 各担当領域の銀経中央・銀緯0度への光線を原盤中心に合わせる。
+        # OTLと同じく、原板は投影機中心から plate の位置にあり、レンズはその先に、
+        # 原板とレンズの距離がレンズの公式を満たす位置にある。円筒投影の半径は原板とレンズの距離。
         galactic_north = SpherePosition.from_galactic(0., 90.).to_vector(1.)
         self._plate_geometry = {}
         for region, (start, end) in enumerate(self.LONGITUDE_REGIONS):
@@ -61,10 +79,13 @@ class GalaxyTransformer:
                 projector_vertical * (1 if dir_ == 0 else -1),
             )
             center = SpherePosition.from_galactic((start + end) / 2., 0.)
-            forward = center.to_vector(sphere).minus(projector).unit_vector()
+            to_center = center.to_vector(sphere).minus(projector)
+            forward = to_center.unit_vector()
             east = galactic_north.cross(forward).unit_vector()
             north = forward.cross(east).unit_vector()
-            self._plate_geometry[dir_, index] = (projector, forward, east, north)
+            lens = lens_distance(math.sqrt(to_center.dot(to_center)) - plate, focus)
+            lens_center = projector.plus(forward.mult_scalar(plate + lens))
+            self._plate_geometry[dir_, index] = (lens_center, lens, forward, east, north)
 
     @classmethod
     def _normalize_longitude(cls, longitude):
@@ -95,28 +116,32 @@ class GalaxyTransformer:
             return None
         return self.transform_unit(sp, *unit)
 
+    def lens_distance(self, dir_, index):
+        """原盤 ``(出力位置, 番号)`` の原板とレンズの距離（円筒投影の半径）。"""
+        return self._plate_geometry[dir_, index][1]
+
     def transform_unit(self, sp, dir_, index):
-        """担当領域の中央を基準に、従来の円筒投影で原盤座標へ変換します。"""
-        projector, forward, east, north = self._plate_geometry[dir_, index]
-        ray = sp.to_vector(self.sphere).minus(projector)
+        """担当領域の中央を基準に、レンズ中心からの円筒投影で原盤座標へ変換します。"""
+        lens_center, lens, forward, east, north = self._plate_geometry[dir_, index]
+        ray = sp.to_vector(self.sphere).minus(lens_center)
         x, y, z = ray.dot(forward), ray.dot(east), ray.dot(north)
         pp = PlatePosition()
         pp.index = index
         pp.dir = dir_
-        pp.xmm = self.plate * z / math.hypot(x, y)
-        pp.ymm = -self.plate * math.atan2(y, x)
+        pp.xmm = lens * z / math.hypot(x, y)
+        pp.ymm = -lens * math.atan2(y, x)
         return pp
 
     def inverse_transform_unit(self, xmm, ymm, dir_, index):
         """原盤上の点から、同じ円筒投影の光線とドームの交点を求める。"""
-        projector, forward, east, north = self._plate_geometry[dir_, index]
-        angle = -ymm / self.plate
+        lens_center, lens, forward, east, north = self._plate_geometry[dir_, index]
+        angle = -ymm / lens
         ray = (forward.mult_scalar(math.cos(angle))
                .plus(east.mult_scalar(math.sin(angle)))
-               .plus(north.mult_scalar(xmm / self.plate))).unit_vector()
-        dot = projector.dot(ray)
-        discriminant = dot * dot + self.sphere ** 2 - projector.dot(projector)
+               .plus(north.mult_scalar(xmm / lens))).unit_vector()
+        dot = lens_center.dot(ray)
+        discriminant = dot * dot + self.sphere ** 2 - lens_center.dot(lens_center)
         if discriminant < 0:
             raise ValueError("原盤の光線がドームと交差しません。")
         distance = -dot + math.sqrt(discriminant)
-        return SpherePosition.from_vector(projector.plus(ray.mult_scalar(distance)))
+        return SpherePosition.from_vector(lens_center.plus(ray.mult_scalar(distance)))

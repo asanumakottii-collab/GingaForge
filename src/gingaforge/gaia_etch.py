@@ -21,12 +21,14 @@ def _init_galaxy_transformer(props):
     radius = positive_number(props, "star-radius-7.5", .125)
     sphere = positive_number(props, "dome-radius", 5000.)
     plate = positive_number(props, "plate-distance", 50.)
+    focus = positive_number(props, "focal-length", 50.)
     horizontal = float(props.get("projector-horizontal", 300.))
     vertical = float(props.get("projector-vertical", 200.))
     if (not math.isfinite(horizontal) or not math.isfinite(vertical)
             or math.hypot(horizontal, vertical) >= sphere):
         raise ValueError("投影機位置は有限値で、ドームの内側にしてください。")
-    return GalaxyTransformer(radius, sphere * scale, horizontal * scale, vertical * scale, plate * scale)
+    # OTLと同じく、長さはすべて scale 倍してから計算する（全体の相似縮小）。
+    return GalaxyTransformer(radius, sphere * scale, horizontal * scale, vertical * scale, plate * scale, focus * scale)
 
 
 def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mirrored=False):
@@ -86,7 +88,10 @@ def _build_column(gaia, etching, transformer, frame_radius):
     """1列分の原盤一式の穴を配置し、``(穴, 穴の半径)`` を返します。"""
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
     print(f"円筒投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
-          f"原盤距離 {transformer.plate / etching.scale:g} mm / 倍率 {etching.scale:g}")
+          f"原盤距離 {transformer.plate / etching.scale:g} mm / "
+          f"焦点距離 {transformer.focus / etching.scale:g} mm / 倍率 {etching.scale:g}")
+    lens = [transformer.lens_distance(*divmod(region, 2)) for region in range(len(regions))]
+    print(f"原板とレンズの距離（出力上）: {min(lens):.4f}〜{max(lens):.4f} mm")
     builder = EtchingBuilder(transformer, etching, frame_radius)
     print(f"Gaia G={gaia.bright:g}より暗く{gaia.faint:g}以下の光量を集計します。", flush=True)
     for sky_bin in iter_flux_bins(gaia, regions, limit):

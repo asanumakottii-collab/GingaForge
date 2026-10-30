@@ -20,9 +20,12 @@ class IntegrationTests(unittest.TestCase):
                               cwd=cwd, env=env, text=True, capture_output=True, timeout=timeout)
 
     def test_shared_projection_matches_ohp_in_all_four_regions(self):
+        from gingaforge.galaxy_geometry import lens_distance
         from gingaforge.ohp import plate_to_sky
-        for distance, scale in ((50., 1.), (70., 2.)):
-            transformer = GalaxyTransformer(.1, 6500. * scale, 0., 0., distance * scale)
+        for distance, focus, scale in ((50., 19., 1.), (70., 30., 2.)):
+            transformer = GalaxyTransformer(.1, 6500. * scale, 0., 0., distance * scale, focus * scale)
+            lens = lens_distance(6500. - distance, focus)
+            projection = (lens, distance + lens, 6500.)
             for region, (start, end) in enumerate(REGIONS.values()):
                 center = (start + end) / 2
                 for longitude in (start, center, end):
@@ -30,7 +33,7 @@ class IntegrationTests(unittest.TestCase):
                         # Explicit unit retains the upper boundary for orientation checks.
                         p = transformer.transform_unit(SpherePosition.from_galactic(longitude, latitude),
                                                        *divmod(region, 2))
-                        actual_l, actual_b = plate_to_sky(p.xmm, p.ymm, center, distance, scale)
+                        actual_l, actual_b = plate_to_sky(p.xmm, p.ymm, center, projection, scale)
                         self.assertAlmostEqual(0., (actual_l - longitude + 180) % 360 - 180, places=9)
                         self.assertAlmostEqual(latitude, actual_b, places=9)
 
@@ -72,7 +75,7 @@ class IntegrationTests(unittest.TestCase):
             output = configs / 'output/ohp'
             self.assertFalse((root / 'output').exists())
             self.assertEqual(['ohp-plates.pdf'], [p.name for p in output.iterdir()])
-            self.assertEqual(2, len(PdfReader(output / 'ohp-plates.pdf').pages))
+            self.assertEqual(1, len(PdfReader(output / 'ohp-plates.pdf').pages))
 
     def test_cli_help_and_invalid_options(self):
         with tempfile.TemporaryDirectory() as directory:

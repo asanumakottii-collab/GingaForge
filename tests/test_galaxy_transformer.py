@@ -6,7 +6,8 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from gingaforge.gaia_etch import GalaxyTransformer, _init_plate_writer
+from gingaforge.gaia_etch import GalaxyTransformer, _init_galaxy_transformer, _init_plate_writer
+from gingaforge.galaxy_geometry import lens_distance
 from gingaforge.models import SpherePosition
 
 
@@ -40,7 +41,7 @@ class GalacticCoordinatesTests(unittest.TestCase):
 
 class GalaxyTransformerTests(unittest.TestCase):
     def setUp(self):
-        self.transformer = GalaxyTransformer(0.125, 6500., 355., 200., 50.)
+        self.transformer = GalaxyTransformer(0.125, 6500., 355., 200., 50., 19.)
 
     def test_each_region_contains_both_galactic_latitude_signs(self):
         for longitude, unit in ((30., (0, 0)), (90., (0, 1)),
@@ -82,14 +83,60 @@ class GalaxyTransformerTests(unittest.TestCase):
                 self.assertAlmostEqual(0., position.xmm, places=10)
                 self.assertAlmostEqual(0., position.ymm, places=10)
 
+    def test_lens_distance_follows_lens_formula(self):
+        for image, focus in ((6450., 19.), (6450., 50.), (100., 25.), (6.5e12, 50.)):
+            with self.subTest(image=image, focus=focus):
+                lens = lens_distance(image, focus)
+                self.assertAlmostEqual(1., focus * (1 / lens + 1 / (image - lens)), places=12)
+                self.assertLessEqual(lens, image / 2)
+        for image, focus in ((99., 25.), (6450., 0.), (6450., -1.)):
+            with self.subTest(image=image, focus=focus), self.assertRaisesRegex(ValueError, "焦点距離"):
+                lens_distance(image, focus)
+
     def test_cylindrical_projection_scale_and_direction(self):
-        transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50.)
+        # 中心配置。レンズ中心は原盤中心の方向に plate + lens だけ出ている。
+        transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
+        lens = lens_distance(6500. - 50., 19.)
+        offset = 50. + lens
         for center in (30., 90., 330., 270.):
-            for delta_l, latitude in ((-10., -15.), (10., 15.)):
+            self.assertAlmostEqual(lens, transformer.lens_distance(*transformer.unit_of_galactic(center, 0.)), places=12)
+            for delta_l, latitude in ((-10., -15.), (10., 15.), (30., 20.)):
                 with self.subTest(center=center, delta_l=delta_l):
-                    position = transformer.transform(_position(center + delta_l, latitude))
-                    self.assertAlmostEqual(50. * math.tan(math.radians(latitude)), position.xmm, places=10)
-                    self.assertAlmostEqual(-50. * math.radians(delta_l), position.ymm, places=10)
+                    position = transformer.transform_unit(_position(center + delta_l, latitude),
+                                                          *transformer.unit_of_galactic(center, 0.))
+                    b, dl = math.radians(latitude), math.radians(delta_l)
+                    forward = 6500. * math.cos(b) * math.cos(dl) - offset
+                    east, north = 6500. * math.cos(b) * math.sin(dl), 6500. * math.sin(b)
+                    self.assertAlmostEqual(lens * north / math.hypot(forward, east), position.xmm, places=10)
+                    self.assertAlmostEqual(-lens * math.atan2(east, forward), position.ymm, places=10)
+
+    def test_default_focal_length_gives_about_20_mm_plates(self):
+        transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
+        self.assertAlmostEqual(19.0563, transformer.lens_distance(0, 0), places=4)
+        top, bottom = (transformer.transform_unit(_position(l), 0, 0) for l in (0., 60.))
+        side = transformer.transform_unit(_position(30., 20.), 0, 0)
+        self.assertAlmostEqual(20.16, top.ymm - bottom.ymm, places=2)
+        self.assertAlmostEqual(14.03, 2 * side.xmm, places=2)
+
+    def test_scale_shrinks_whole_geometry(self):
+        for horizontal, vertical in ((0., 0.), (355., 200.)):
+            full = GalaxyTransformer(0.125, 6500., horizontal, vertical, 50., 19.)
+            scale = .25
+            small = GalaxyTransformer(0.125, 6500. * scale, horizontal * scale, vertical * scale, 50. * scale, 19. * scale)
+            for longitude, latitude in ((10., -15.), (95., 18.), (250., 3.), (333., -19.)):
+                with self.subTest(horizontal=horizontal, longitude=longitude):
+                    a, b = full.transform(_position(longitude, latitude)), small.transform(_position(longitude, latitude))
+                    self.assertAlmostEqual(a.xmm * scale, b.xmm, places=10)
+                    self.assertAlmostEqual(a.ymm * scale, b.ymm, places=10)
+
+    def test_config_focal_length_is_scaled_like_otl(self):
+        props = {"scale": ".5", "dome-radius": "6500", "plate-distance": "50", "focal-length": "19",
+                 "projector-horizontal": "0", "projector-vertical": "0"}
+        transformer = _init_galaxy_transformer(props)
+        self.assertEqual(9.5, transformer.focus)
+        self.assertAlmostEqual(.5 * lens_distance(6450., 19.), transformer.lens_distance(0, 0), places=12)
+        with self.assertRaisesRegex(ValueError, "焦点距離"):
+            _init_galaxy_transformer({**props, "focal-length": "2000"})
 
     def test_entire_band_fits_default_frames(self):
         for longitude in range(360):
