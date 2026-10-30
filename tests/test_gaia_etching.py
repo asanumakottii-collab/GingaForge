@@ -21,6 +21,12 @@ def position(lon, lat=0.):
     return SpherePosition.from_galactic(lon, lat)
 
 
+def lens_at_projector(horizontal=0., vertical=0., lens=50.):
+    """ドームと投影機の位置を10^9倍にし、レンズ中心を投影機中心とみなせる変換（円筒投影の半径は約 lens mm）。"""
+    k = 1e9
+    return GalaxyTransformer(.1, 6500. * k, horizontal * k, vertical * k, 0., lens)
+
+
 def write_cache(directory, cells, settings=None):
     """``{領域番号: [(銀経, 銀緯, 光量, 天体数), ...]}`` から検証可能なGaiaキャッシュを作る。"""
     directory = Path(directory)
@@ -43,12 +49,12 @@ def write_cache(directory, cells, settings=None):
 
 class EtchingTests(unittest.TestCase):
     def setUp(self):
-        self.t = GalaxyTransformer(.1, 6500., 0., 0., 50.)
+        self.t = GalaxyTransformer(.1, 6500., 0., 0., 50., 19.)
         self.settings = EtchingSettings()
 
     def test_inverse_projection_with_offset(self):
         for horizontal, vertical in ((0., 0.), (355., 200.)):
-            transformer = GalaxyTransformer(.1, 6500., horizontal, vertical, 50.)
+            transformer = GalaxyTransformer(.1, 6500., horizontal, vertical, 50., 19.)
             for lon in (0., 30., 59.9, 60., 119., 240., 270., 300., 330., 359.9):
                 for lat in (-20., 0., 20.):
                     sp = position(lon, lat)
@@ -108,7 +114,7 @@ class EtchingTests(unittest.TestCase):
 
     def test_final_dimensions_follow_scale(self):
         settings = EtchingSettings.from_properties({"scale": "2"})
-        builder = EtchingBuilder(GalaxyTransformer(.2, 13000., 0., 0., 100.), settings, 69.25)
+        builder = EtchingBuilder(GalaxyTransformer(.2, 13000., 0., 0., 100., 38.), settings, 69.25)
         builder.add_sample(position(30.01, .01), .1)
         holes, _ = builder.build()
         self.assertEqual(10, len(holes))
@@ -174,8 +180,8 @@ class EtchingTests(unittest.TestCase):
         # 0.1度のビンは原盤上で約0.087 mm。0.4 mmのセルには4個または5個ずつ入るので、
         # ビンの中心1点に光量を置くと、一様な空でも隣のセルと5/4倍違う縞ができる。
         settings = EtchingSettings(cell_mm=.4)
-        area = EtchingBuilder(self.t, settings, 69.25)
-        point = EtchingBuilder(self.t, settings, 69.25)
+        area = EtchingBuilder(lens_at_projector(), settings, 69.25)
+        point = EtchingBuilder(lens_at_projector(), settings, 69.25)
         count = self.uniform_sky((area, point), 20., -3., add_point=point)
         self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
         self.assertAlmostEqual(.25, self.largest_step_between_neighbours(point), places=9)
@@ -185,7 +191,7 @@ class EtchingTests(unittest.TestCase):
         self.assertLess(max(inner) / min(inner), 1.01)
 
     def test_uniform_sky_bins_with_projector_offset(self):
-        transformer = GalaxyTransformer(.1, 6500., 355., 200., 50.)
+        transformer = lens_at_projector(355., 200.)
         area = EtchingBuilder(transformer, EtchingSettings(cell_mm=.4), 69.25)
         point = EtchingBuilder(transformer, EtchingSettings(cell_mm=.4), 69.25)
         count = self.uniform_sky((area, point), 80., 10., add_point=point)
@@ -195,8 +201,8 @@ class EtchingTests(unittest.TestCase):
         self.assertLess(self.largest_step_between_neighbours(area), .005)
 
     def test_bin_is_split_by_overlap_area(self):
-        builder = EtchingBuilder(self.t, EtchingSettings(cell_mm=.4), 69.25)
-        # 原盤中心（セルの角）をまたぐビン。x = p tan b、y = -p (l - 30度)。
+        builder = EtchingBuilder(lens_at_projector(), EtchingSettings(cell_mm=.4), 69.25)
+        # 原盤中心（セルの角）をまたぐビン。レンズ中心がドーム中心なら x = L tan b、y = -L (l - 30度)。
         builder.add_bin(29.96, 30.06, -.04, .06, 1.)
         tan = lambda degrees: math.tan(math.radians(degrees))
         x_fraction = {-1: tan(.04) / (tan(.04) + tan(.06)), 0: tan(.06) / (tan(.04) + tan(.06))}

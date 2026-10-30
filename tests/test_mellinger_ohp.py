@@ -25,19 +25,35 @@ class MasterChecks(unittest.TestCase):
     def test_requested_regions_and_default_dimensions(self):
         self.assertEqual(REGIONS, {'N0': (0, 60), 'N1': (60, 120),
                                    'S0': (300, 360), 'S1': (240, 300)})
-        _, _, _, _, width, height = geometry(self.cfg)
-        self.assertAlmostEqual(width, 36.39702342662024 * 0.42017)
-        self.assertAlmostEqual(height, 52.35987755982988 * 0.42017)
-        self.assertAlmostEqual(height, 22, places=3)
+        (lens, offset, sphere), _, scale, _, width, height = geometry(self.cfg)
+        # focal-length-mm = 19 から、レンズの公式で原板とレンズの距離が決まる。
+        self.assertEqual((6500., 1.), (sphere, scale))
+        self.assertAlmostEqual(1., 19. * (1 / lens + 1 / (6500. - 50. - lens)), places=12)
+        self.assertAlmostEqual(50. + lens, offset)
+        self.assertAlmostEqual(lens, 19.0563, places=4)
+        self.assertAlmostEqual(width, 14.0305, places=4)
+        self.assertAlmostEqual(height, 20.1600, places=4)
+
+    def test_print_scale_shrinks_whole_geometry(self):
+        cfg = read_config(ROOT / 'mellinger-ohp.properties')
+        _, _, _, _, width, height = geometry(cfg)
+        cfg['print-scale'] = '0.5'
+        _, _, _, _, half_width, half_height = geometry(cfg)
+        self.assertAlmostEqual(width / 2, half_width)
+        self.assertAlmostEqual(height / 2, half_height)
+        cfg['focal-length-mm'] = '2000'
+        with self.assertRaisesRegex(ValueError, '焦点距離'):
+            geometry(cfg)
 
     def test_boundary_orientation_and_source_wcs(self):
         p, bmax, scale, _, width, height = geometry(self.cfg)
         for start, end in REGIONS.values():
-            l, b = plate_to_sky(np.array([-width/2, 0, width/2]),
-                                np.array([-height/2, 0, height/2]),
+            # 上下の辺の中央が担当領域の銀経の端、左右の辺の中央が銀緯の端。
+            l, b = plate_to_sky(np.array([0, 0, 0, -width/2, width/2]),
+                                np.array([-height/2, 0, height/2, 0, 0]),
                                 (start+end)/2, p, scale)
-            np.testing.assert_allclose(l, [end % 360, (start+end)/2, start], atol=1e-10)
-            np.testing.assert_allclose(b, [-bmax, 0, bmax], atol=1e-10)
+            np.testing.assert_allclose(l, [end % 360, (start+end)/2, start, (start+end)/2, (start+end)/2], atol=1e-10)
+            np.testing.assert_allclose(b, [0, 0, 0, -bmax, bmax], atol=1e-10)
             x, y = self.wcs.world_to_pixel_values(l, b)
             actual_l, actual_b = self.wcs.pixel_to_world_values(x, y)
             np.testing.assert_allclose((actual_l-l+180) % 360 - 180, 0, atol=1e-8)

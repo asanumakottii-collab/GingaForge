@@ -25,7 +25,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from . import starnet_setup
 from .config import PROJECT_ROOT, output_directory
-from .galaxy_geometry import REGIONS
+from .galaxy_geometry import REGIONS, lens_distance
 from .models import SpherePosition
 
 # StarNet2へ渡す16ビット画像の可逆なasinh変換。上限を超えるのは明るい星の芯だけ。
@@ -43,23 +43,49 @@ def read_config(path):
 
 
 def geometry(cfg):
-    p = cfg.getfloat("plate-distance-mm")
+    """``(投影, 銀緯の上限, 倍率, dpi, 画像の幅, 画像の高さ)`` を返す。
+
+    投影は ``(原板とレンズの距離, ドーム中心からレンズ中心までの距離, ドーム半径)``（倍率を掛ける前のmm）。
+    OTLと同じく、原板は投影機中心から plate-distance-mm の位置にあり、原板とレンズの距離はレンズの公式から決まる。
+    """
+    plate = cfg.getfloat("plate-distance-mm")
+    focus = cfg.getfloat("focal-length-mm")
+    sphere = cfg.getfloat("dome-radius-mm")
     bmax = cfg.getfloat("latitude-limit-deg")
     scale = cfg.getfloat("print-scale")
     dpi = cfg.getint("raster-dpi")
-    if not (p > 0 and 0 < bmax < 90 and scale > 0 and 72 <= dpi <= 2400):
+    if not (plate >= 0 and focus > 0 and sphere > plate and 0 < bmax < 90 and scale > 0 and 72 <= dpi <= 2400):
         raise ValueError("Invalid geometry or raster resolution")
     if cfg.getfloat("projector-horizontal-mm") != 0 or cfg.getfloat("projector-vertical-mm") != 0:
         raise ValueError("This OHP renderer supports only the centered projector")
-    width = 2 * p * math.tan(math.radians(bmax)) * scale
-    height = p * math.radians(60) * scale
+    lens = lens_distance(sphere - plate, focus)
+    offset = plate + lens
+    # 原盤の端は、レンズ中心から見たドーム上の銀経±30度・銀緯±bmaxの点。
+    b = math.radians(bmax)
+    width = 2 * lens * sphere * math.sin(b) / (sphere * math.cos(b) - offset) * scale
+    height = 2 * lens * math.atan2(sphere * math.sin(math.radians(30)), sphere * math.cos(math.radians(30)) - offset) * scale
     if width > FRAME_SIDE - 16 or height > FRAME_SIDE - 52:
         raise ValueError(f"Image and labels do not fit the {FRAME_SIDE:g} mm frame of the 2 x 2 layout")
-    return p, bmax, scale, dpi, width, height
+    return (lens, offset, sphere), bmax, scale, dpi, width, height
 
 
-def plate_to_sky(x_mm, y_mm, center_deg, plate_distance_mm, scale=1.):
-    return (center_deg - np.degrees(np.asarray(y_mm) / (plate_distance_mm * scale))) % 360., np.degrees(np.arctan(np.asarray(x_mm) / (plate_distance_mm * scale)))
+def plate_to_sky(x_mm, y_mm, center_deg, projection, scale=1.):
+    """原盤上の点から、レンズ中心を通る光線がドームに当たる点の ``(銀経, 銀緯)``（度）を返す。
+
+    projection は geometry() が返す ``(原板とレンズの距離, ドーム中心からレンズ中心までの距離, ドーム半径)``。
+    """
+    lens, offset, sphere = projection
+    angle = -np.asarray(y_mm) / (lens * scale)
+    # 原盤中心の方向・銀経の増える方向・銀北極の方向の成分。
+    forward, east, north = np.cos(angle), np.sin(angle), np.asarray(x_mm) / (lens * scale)
+    norm = np.sqrt(1 + north * north)
+    forward, east, north = forward / norm, east / norm, north / norm
+    along = offset * forward
+    distance = -along + np.sqrt(along * along + sphere * sphere - offset * offset)
+    forward = offset + distance * forward
+    east, north = distance * east, distance * north
+    return ((center_deg + np.degrees(np.arctan2(east, forward))) % 360.,
+            np.degrees(np.arctan2(north, np.hypot(forward, east))))
 
 
 def celestial_wcs(header):
@@ -199,14 +225,14 @@ def bilinear(data, x, y):
 
 
 def reproject(data, wcs, start, end, cfg):
-    p, _, scale, dpi, width, height = geometry(cfg)
+    projection, _, scale, dpi, width, height = geometry(cfg)
     nx, ny = round(width / 25.4 * dpi), round(height / 25.4 * dpi)
     x = (np.arange(nx) + .5) / nx * width - width / 2
     output = np.empty((ny, nx), dtype=np.float32)
     for row in range(0, ny, 128):
         y = (np.arange(row, min(row + 128, ny)) + .5) / ny * height - height / 2
         xx, yy = np.meshgrid(x, y)
-        longitude, latitude = plate_to_sky(xx, yy, (start + end) / 2, p, scale)
+        longitude, latitude = plate_to_sky(xx, yy, (start + end) / 2, projection, scale)
         sx, sy = wcs.world_to_pixel_values(longitude, latitude)
         output[row:row + len(y)] = bilinear(data, sx, sy)
     if not np.all(np.isfinite(output)):
@@ -268,7 +294,7 @@ def caption(cfg):
 
 
 def make_master(path, images, cfg):
-    _, bmax, scale, _, width, height = geometry(cfg)
+    (lens, _, _), bmax, scale, _, width, height = geometry(cfg)
     c = canvas.Canvas(str(path), pagesize=A4, pageCompression=1)
     c.setTitle("Mellinger OHP masters - N0 N1 S0 S1")
     c.setAuthor("Source sky image: Axel Mellinger (2009)")
@@ -277,7 +303,8 @@ def make_master(path, images, cfg):
     c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica", 6)
     c.drawCentredString(105 * mm, 148 * mm,
-        f"PRINT AT 100% / NO FIT-TO-PAGE | scale {scale:g} | field {width:.4f} x {height:.4f} mm | |b| <= {bmax:g} deg")
+        f"PRINT AT 100% / NO FIT-TO-PAGE | scale {scale:g} | focal length {cfg.getfloat('focal-length-mm') * scale:g} mm"
+        f" | lens-plate {lens * scale:.4f} mm | field {width:.4f} x {height:.4f} mm | |b| <= {bmax:g} deg")
     c.showPage()
     c.save()
 
