@@ -158,7 +158,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
             for column, (holes, radius) in enumerate(results):
                 for dir_, index, x, y in holes:
                     writer.write_hole(dir_, index, x, y, radius, column)
-    print("生成完了d(￣ ￣) ｳｪｰｲ")
+    print("生成完了 d(￣ ￣) ｳｪ~ｲ")
     return writers[0].output_dir
 
 
