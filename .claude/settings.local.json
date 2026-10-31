@@ -18,7 +18,10 @@
       "Bash(../../../../../../../../Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/.venv/bin/python -c ' *)",
       "Bash(/Users/asanumawatarushi/Documents/東大天文部/ぎんとう/GingaForge/.venv/bin/python -V)",
       "Bash(PYTHONPATH=src timeout 600 ../../../.venv/bin/python -m unittest discover -s tests -t .)",
-      "Bash(PYTHONPATH=src ../../../.venv/bin/python -m unittest discover -s tests -t .)"
+      "Bash(PYTHONPATH=src ../../../.venv/bin/python -m unittest discover -s tests -t .)",
+      "Bash(git log *)",
+      "Bash(git grep *)",
+      "Bash(git count-objects *)"
     ]
   }
 }
