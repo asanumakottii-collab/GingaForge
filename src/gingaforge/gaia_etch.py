@@ -1,6 +1,7 @@
 # Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
-"""Gaia DR3のG帯光量からエッチング用の天の川原盤を生成する。既定でSVGとPDFの両方を出力する。
+"""Gaia DR3のG帯光量からエッチング・OHP印刷用の天の川原盤を生成する。既定でSVGとPDFの両方を出力する。
 
+``render`` で、円形の穴（holes）か、開口率の階調（gray）・点描（dither）の画像かを選ぶ。
 ``column.count`` を2以上にすると、列ごとに設定を変えた原盤一式を用紙に左から並べる。
 """
 
@@ -85,7 +86,7 @@ def _column_headings(changes):
 
 
 def _build_column(gaia, etching, transformer, frame_radius):
-    """1列分の原盤一式の穴を配置し、``(穴, 穴の半径)`` を返します。"""
+    """1列分の原盤一式の穴・画像を作り、``(穴, 穴の半径, 画像)`` を返します。使わない方は空です。"""
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
     print(f"平らな原板への投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
           f"原盤距離 {transformer.plate / etching.scale:g} mm / "
@@ -100,22 +101,36 @@ def _build_column(gaia, etching, transformer, frame_radius):
         raise ValueError("Gaia入力に担当領域・等級範囲の天体がありません。")
     if etching.milky_way:
         print("天の川強調: 背景の明るさを差し引いています。", flush=True)
-    print(f"最終穴径 {etching.min_diameter_mm:g} mm、金属幅 {etching.min_web_mm:g} mm の穴を配置しています。", flush=True)
-    holes, plates = builder.build()
+    if etching.render == "holes":
+        print(f"最終穴径 {etching.min_diameter_mm:g} mm、金属幅 {etching.min_web_mm:g} mm の穴を配置しています。",
+              flush=True)
+        holes, plates = builder.build()
+        images = []
+    else:
+        kind = "階調" if etching.render == "gray" else "点描（誤差拡散）"
+        print(f"開口率を {etching.raster_dpi:g} dpi の{kind}の画像にしています。", flush=True)
+        images, plates = builder.build_raster()
+        holes = ()
     if builder.milky_way:
         milky_way = builder.milky_way
         print(f"天の川強調: 黒点 {milky_way['black_level']:.3g}、基準点 {milky_way['anchor_level']:.3g}"
               f"（G={gaia.reference:g}等星換算/平方度）、"
               f"{milky_way['dark_cells']:,}/{milky_way['cells']:,}セルを遮光", flush=True)
-    if not len(holes):
+    if etching.render == "holes" and not len(holes):
         raise ValueError("出力できる穴がありません。光量倍率・最小穴径・用紙配置を確認してください。")
+    if etching.render != "holes" and not any(pixels.any() for _, _, pixels, *_ in images):
+        raise ValueError("出力できる光がありません。光量倍率・用紙配置を確認してください。")
     for item in plates:
         requested = item["requested_area_mm2"]
         loss = item["capacity_loss_area_mm2"] / requested if requested else 0.
-        print(f"{item['plate']}: {item['holes']:,}穴、容量不足の光量 {loss:.2%}")
+        if etching.render == "holes":
+            print(f"{item['plate']}: {item['holes']:,}穴、容量不足の光量 {loss:.2%}")
+        else:
+            print(f"{item['plate']}: 最大開口率 {item['max_open_fraction']:.0%}、"
+                  f"開口面積 {item['open_area_mm2']:.2f} mm²、容量不足の光量 {loss:.2%}")
         if loss > .01:
             print("  注意: 濃淡が飽和しています。flux-gain（galaxy.etch.* / galaxy.ohp.*）を下げるか、加工条件・集計セルを見直してください。")
-    return holes, builder.radius
+    return holes, builder.radius, images
 
 
 def generate(config_path, formats=("svg", "pdf"), download=False):
@@ -155,9 +170,11 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
     for writer in writers:
         with writer:
             writer.write_frames(2)
-            for column, (holes, radius) in enumerate(results):
+            for column, (holes, radius, images) in enumerate(results):
                 for dir_, index, x, y in holes:
                     writer.write_hole(dir_, index, x, y, radius, column)
+                for dir_, index, *image in images:
+                    writer.write_image(dir_, index, *image, column)
     print("生成完了 d(￣ ￣) ｳｪ~ｲ")
     return writers[0].output_dir
 
