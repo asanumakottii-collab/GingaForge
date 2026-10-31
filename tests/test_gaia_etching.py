@@ -1,6 +1,8 @@
+import base64
 from collections import Counter
 import csv
 import gzip
+from io import BytesIO
 import json
 import math
 from pathlib import Path
@@ -12,9 +14,11 @@ from unittest.mock import patch
 
 from gingaforge.gaia_catalog import (GaiaSettings, build_queries, iter_flux_bins, iter_flux_samples,
                           _votable_to_csv, file_sha256)
-from gingaforge.galaxy_etching import EtchingBuilder, EtchingSettings
+from gingaforge.galaxy_etching import EtchingBuilder, EtchingSettings, dither_pixels
 from gingaforge.gaia_etch import GalaxyTransformer, main
 from gingaforge.models import SpherePosition
+import numpy as np
+from PIL import Image
 
 
 def position(lon, lat=0.):
@@ -298,6 +302,97 @@ class EtchingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             builder.build()
 
+    def test_render_settings(self):
+        self.assertEqual(("holes", 1200.), (self.settings.render, self.settings.raster_dpi))
+        gray = EtchingSettings.from_properties({"galaxy.ohp.render": "Gray", "galaxy.ohp.raster-dpi": "600"})
+        self.assertEqual(("gray", 600.), (gray.render, gray.raster_dpi))
+        # 画像には穴の候補格子がないため、穴径＋金属幅（0.04 mm）より細かいセルも使える。
+        fine = {"galaxy.ohp.cell-size-mm": ".03"}
+        with self.assertRaisesRegex(ValueError, "cell-size-mm"):
+            EtchingSettings.from_properties(fine)
+        self.assertEqual(.03, EtchingSettings.from_properties({**fine, "galaxy.ohp.render": "dither"}).cell_mm)
+        builder = EtchingBuilder(self.t, EtchingSettings(cell_mm=.13, render="gray"), 69.25)
+        self.assertAlmostEqual(.13, builder.cell)
+        for key, value in (("render", "stipple"), ("raster-dpi", "50"), ("raster-dpi", "4800"), ("raster-dpi", "x")):
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, f"galaxy.ohp.{key}"):
+                EtchingSettings.from_properties({f"galaxy.ohp.{key}": value})
+
+    def raster_of_uniform_sky(self, render):
+        """一様な空（銀経20〜40度、銀緯±3度）の N0 の画像と集計、内側の画素を返す。"""
+        transformer = lens_at_projector()
+        builder = EtchingBuilder(transformer, EtchingSettings(cell_mm=.13, flux_gain=.1, render=render,
+                                                              raster_dpi=600), 69.25)
+        self.uniform_sky((builder,), 20., -3.)
+        images, plates = builder.build_raster()
+        self.assertEqual([(0, 0)], [image[:2] for image in images])
+        _, _, pixels, left, top, width, height = images[0]
+        pixel = 25.4 / 600
+        self.assertEqual((round(height / pixel), round(width / pixel)), pixels.shape)
+        x = left + (np.arange(pixels.shape[1]) + .5) * pixel
+        y = top + (np.arange(pixels.shape[0]) + .5) * pixel
+        # データの端（銀経20・40度、中央の銀緯±3度。平らな原板では銀緯の端は両端ほど外に広がる）からセル3個分より内側。
+        y_edge = abs(transformer.transform(position(40., 0.)).ymm)
+        x_edge = abs(transformer.transform(position(30., 3.)).xmm)
+        margin = 3 * builder.cell
+        inner = np.ix_(np.abs(y) < y_edge - margin, np.abs(x) < x_edge - margin)
+        return pixels, plates[0], pixels[inner]
+
+    def test_gray_raster_of_uniform_sky_is_uniform_and_keeps_light(self):
+        pixels, plate, inner = self.raster_of_uniform_sky("gray")
+        # ビン（約0.087 mm）とセル（0.13 mm）の比が整数でなくても、縞は出ない（隣り合う画素の差は階調1段以内）。
+        # 平らな原板では空が端ほど広く写るため、開口率は端に向かってなめらかに少し下がる。
+        self.assertLessEqual(np.abs(np.diff(inner.astype(int), axis=0)).max(), 1)
+        self.assertLessEqual(np.abs(np.diff(inner.astype(int), axis=1)).max(), 1)
+        self.assertAlmostEqual(.4, inner.mean() / 255, delta=.05)
+        self.assertAlmostEqual(1., plate["open_area_mm2"] / plate["requested_area_mm2"], delta=.005)
+        self.assertAlmostEqual(plate["requested_area_mm2"], plate["linear_area_mm2"])
+        self.assertEqual(0., plate["capacity_loss_area_mm2"])
+        self.assertAlmostEqual(inner.max() / 255, plate["max_open_fraction"], delta=.01)
+
+    def test_dither_raster_of_uniform_sky_keeps_light(self):
+        pixels, plate, inner = self.raster_of_uniform_sky("dither")
+        _, _, gray_inner = self.raster_of_uniform_sky("gray")
+        self.assertEqual({0, 255}, set(np.unique(pixels).tolist()))
+        self.assertAlmostEqual(gray_inner.mean() / 255, (inner == 255).mean(), delta=.005)
+        self.assertAlmostEqual(1., plate["open_area_mm2"] / plate["requested_area_mm2"], delta=.005)
+
+    def test_raster_saturation_is_clipped_and_not_spilled(self):
+        builder = EtchingBuilder(self.t, EtchingSettings(cell_mm=.2, render="gray", raster_dpi=600), 69.25)
+        builder.add_sample(position(30.05, .05), 1e4)
+        builder.add_sample(position(31.05, .05), .01)
+        images, plates = builder.build_raster()
+        plate = plates[0]
+        self.assertEqual(1., plate["max_open_fraction"])
+        self.assertAlmostEqual(plate["requested_area_mm2"] - builder.cell ** 2 - builder.reference_area * .01,
+                               plate["capacity_loss_area_mm2"])
+        _, _, pixels, left, top, _, _ = images[0]
+        pixel = 25.4 / 600
+        # 明るいセルの中心（.1, -.1）。画素の中心はセルの中心と一致しないため、補間で少し暗くなる。
+        row, col = int((-.1 - top) / pixel), int((.1 - left) / pixel)
+        self.assertGreater(pixels[row, col], 200)
+        self.assertEqual(pixels.max(), pixels[row - 1:row + 2, col - 1:col + 2].max())
+        # 飽和した光は、暗いセルへ移さない。
+        far = builder.transformer.transform(position(31.05, .05))
+        row, col = int((far.ymm - top) / pixel), int((far.xmm - left) / pixel)
+        self.assertLess(pixels[row, col], 20)
+
+    def test_dither_pixels(self):
+        quarter = dither_pixels(np.full((60, 80), .25))
+        self.assertAlmostEqual(.25, (quarter == 255).mean(), delta=.005)
+        np.testing.assert_array_equal(quarter, dither_pixels(np.full((60, 80), .25)))
+        self.assertFalse(dither_pixels(np.zeros((5, 7))).any())
+        self.assertTrue((dither_pixels(np.ones((5, 7))) == 255).all())
+        # 暗い所でも、点の数は光量の合計に近い。8ビットに丸めると 0.001 は0になり、点が1つも打たれない。
+        for value in (.003, .001):
+            faint = dither_pixels(np.full((1000, 100), value))
+            self.assertAlmostEqual(value * faint.size, (faint == 255).sum(), delta=1)
+        # 光のない所（開口率0）へ誤差を配らないので、明るい四角の外に点がなく、四角の中の光も減らない。
+        square = np.zeros((50, 60))
+        square[10:30, 20:45] = .1
+        dots = dither_pixels(square) == 255
+        self.assertFalse(dots[square == 0].any())
+        self.assertAlmostEqual(.1 * 20 * 25, dots.sum(), delta=1)
+
 
 class GaiaInputTests(unittest.TestCase):
     def test_missing_cache_is_reported(self):
@@ -488,6 +583,49 @@ class GaiaCommandTests(unittest.TestCase):
                 self.assertIn(message, stderr.getvalue())
                 self.assertFalse((Path(directory) / "output").exists())
 
+    @staticmethod
+    def svg_images(path):
+        """SVGの画像を ``(x mm, 画素の配列)`` で返す。"""
+        found = []
+        for element in ET.parse(path).getroot().iter("{http://www.w3.org/2000/svg}image"):
+            data = element.attrib["{http://www.w3.org/1999/xlink}href"].removeprefix("data:image/png;base64,")
+            found.append((float(element.attrib["x"][:-2]), np.asarray(Image.open(BytesIO(base64.b64decode(data))))))
+        return found
+
+    def test_columns_mix_holes_and_images(self):
+        from pypdf import PdfReader
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.column_config(directory, "galaxy.etch.render=holes\ncolumn.count=2\n"
+                                                   "column.2.galaxy.etch.render=gray\n")
+            with patch("sys.stdout", new_callable=StringIO) as stdout:
+                self.assertEqual(0, main(["-f", str(config)]))
+                self.assertEqual(0, main(["-mirrored", "-f", str(config)]))
+            self.assertIn("1200 dpi の階調の画像", stdout.getvalue())
+            output = Path(directory) / "output" / "galaxy" / "inverted"
+            svg = output / "galaxy-0.svg"
+            holes = [c for c in ET.parse(svg).getroot().iter("{http://www.w3.org/2000/svg}circle")
+                     if not c.get("stroke") and c.get("fill") == "white"]
+            self.assertGreater(len(holes), 0)
+            self.assertTrue(all(float(c.attrib["cx"][:-2]) < 105 for c in holes))
+            # 光のある N0 と S1 だけに、右の列の画像がある。黒地に白で、光の所が明るい。
+            images = self.svg_images(svg)
+            self.assertEqual(2, len(images))
+            self.assertTrue(all(x > 105 and pixels.max() > 0 and pixels.min() == 0 for x, pixels in images))
+            for name in ("galaxy-0.pdf", "galaxy-0-mirrored.pdf"):
+                self.assertEqual(2, len(PdfReader(output / name).pages[0].images))
+
+    def test_normal_color_images_are_black_on_white(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.column_config(directory, "galaxy.etch.render=dither\n")
+            config.write_text(config.read_text().replace("color.invert=yes", "color.invert=no"))
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-svg", "-f", str(config)]))
+            images = self.svg_images(Path(directory) / "output" / "galaxy" / "normal" / "galaxy-0.svg")
+            self.assertEqual(2, len(images))
+            for _, pixels in images:
+                self.assertEqual({0, 255}, set(np.unique(pixels).tolist()))
+                self.assertGreater((pixels == 255).mean(), .9)
+
     def test_default_outputs_svg_and_pdf(self):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
@@ -496,6 +634,29 @@ class GaiaCommandTests(unittest.TestCase):
             output = Path(directory) / "output" / "galaxy" / "inverted"
             self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg", "galaxy-1.pdf", "galaxy-1.svg"],
                              sorted(p.name for p in output.iterdir()))
+
+
+class BundledConfigTests(unittest.TestCase):
+    def test_bundled_gaia_configs_are_valid(self):
+        """同梱の設定ファイルが、生成の前の検査（列の設定・見出しの大きさを含む）を通る。"""
+        from gingaforge.config import PROJECT_ROOT, load_properties
+        from gingaforge.gaia_etch import (_column_headings, _column_properties, _init_galaxy_transformer,
+                                          _init_plate_writer)
+        expected = {
+            "gaia-etch.properties": [("holes", .05)],
+            "gaia-ohp.properties": [("gray", .4), ("dither", .4), ("holes", .05)],
+        }
+        for name, columns in expected.items():
+            with self.subTest(name=name):
+                path = PROJECT_ROOT / name
+                props = load_properties(path)
+                found = _column_properties(props)
+                settings = [EtchingSettings.from_properties(column) for _, column in found]
+                self.assertEqual(columns, [(s.render, s.flux_gain) for s in settings])
+                for _, column in found:
+                    GaiaSettings.from_properties(column, path.parent)
+                    _init_galaxy_transformer(column)
+                _init_plate_writer(props, path, column_headings=_column_headings([change for change, _ in found]))
 
 
 if __name__ == "__main__":

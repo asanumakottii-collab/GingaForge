@@ -4,7 +4,7 @@
 
 - **mellinger-ohp**: Mellinger全天画像 → OHPフィルム用の階調原盤（PDF）
 - **gaia-etch**: Gaia DR3の光量 → 金属エッチング用の穴原盤（SVG・PDF）
-- **gaia-ohp**: Gaia DR3の光量 → OHPフィルム印刷用の穴原盤（SVG・PDF、天の川強調あり）
+- **gaia-ohp**: Gaia DR3の光量 → OHPフィルム印刷用の階調・点描原盤（SVG・PDF、天の川強調あり）
 
 恒星原盤は別プロジェクトのOTLが担当します。このフォルダだけで実行できます。
 
