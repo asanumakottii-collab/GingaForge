@@ -5,7 +5,7 @@
 - **gaia-etch**: Gaia DR3の光量 → 金属エッチング用の穴原盤（SVG・PDF）
 - **gaia-ohp**: Gaia DR3の光量 → OHPフィルム印刷用の階調・点描原盤（SVG・PDF、天の川強調あり）
 
-恒星原盤は別プロジェクトのOTLが担当します。このフォルダだけで実行できます。
+恒星原盤は別プロジェクトの[OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library)が担当します。このフォルダだけで実行できます。
 
 ## 使い方
 
@@ -43,7 +43,7 @@ PDFは **倍率100%・「用紙に合わせる」なし** で印刷してくだ�
 
 ## ライセンス
 
-コードはGPL-2.0-or-laterです（[LICENSE](LICENSE)）。一部はOTLから移行して変更したものです。
+コードはGPL-2.0-or-laterです（[LICENSE](LICENSE)）。一部は[OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library)から移行して変更したものです。
 Copyright (C) 2007, 2012–2014, 2026 東京大学地文研究会天文部。
 
 Gaiaデータと、そこから生成した `output/` の原盤にはGPLではなく、CC BY-NC 3.0 IGOが適用されます。
