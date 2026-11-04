@@ -16,6 +16,8 @@ Gaia データ
 
   - output/gaia-etch/ と output/gaia-ohp/ の原盤
     （Gaia DR3 の G 帯光量を集計・加工して生成したもの）
+  - docs/images/plates.png と docs/images/render-modes.png
+    （上記の原盤から作成したプレビュー画像）
   - --download-gaia で取得するデータ（リポジトリには含みません）
 
   クレジット: ESA/Gaia/DPAC
