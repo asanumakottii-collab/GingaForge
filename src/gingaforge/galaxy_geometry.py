@@ -3,6 +3,7 @@
 # Orb Transform Library(OTL)
 # Copyright (C) 2007,2012,2014 東京大学地文研究会天文部
 # Copyright (C) 2026 東京大学地文研究会天文部
+# 2026年にGingaForge向けに移行・変更しました。
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License

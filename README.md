@@ -2,7 +2,6 @@
 
 銀河投影機（ぎんとう）用の天の川原盤を生成するライブラリです。
 
-- **mellinger-ohp**: Mellinger全天画像 → OHPフィルム用の階調原盤（PDF）
 - **gaia-etch**: Gaia DR3の光量 → 金属エッチング用の穴原盤（SVG・PDF）
 - **gaia-ohp**: Gaia DR3の光量 → OHPフィルム印刷用の階調・点描原盤（SVG・PDF、天の川強調あり）
 
@@ -16,10 +15,8 @@ Python 3.11以上を使います。
 # 初回のみ
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
-.venv/bin/gingaforge install-starnet      # mellinger-ohp で使う StarNet2 を導入（利用条件への同意あり）
 
 # 原盤の生成
-.venv/bin/gingaforge mellinger-ohp
 .venv/bin/gingaforge gaia-etch --download-gaia   # 初回は Gaia の光量を取得する
 .venv/bin/gingaforge gaia-ohp
 
@@ -27,7 +24,7 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -v
 ```
 
-設定は同名の `.properties` ファイル（`mellinger-ohp.properties` など）で変えます。
+設定は同名の `.properties` ファイル（`gaia-etch.properties` など）で変えます。
 生成物は `output/<設定ファイル名>/` に保存します。
 
 | オプション | 対象 | 内容 |
@@ -43,12 +40,11 @@ PDFは **倍率100%・「用紙に合わせる」なし** で印刷してくだ�
 
 - [docs/overview.md](docs/overview.md) — 担当領域、出力先、コードの構成
 - [docs/gaia.md](docs/gaia.md) — Gaia方式（gaia-etch・gaia-ohp）の仕組みと設定
-- [docs/mellinger-ohp.md](docs/mellinger-ohp.md) — Mellinger方式の仕組みと設定、StarNet2の導入
 
 ## ライセンス
 
-OTLから移行したコードはGPL-2.0-or-laterです。
+コードはGPL-2.0-or-laterです（[LICENSE](LICENSE)）。一部はOTLから移行して変更したものです。
 Copyright (C) 2007, 2012–2014, 2026 東京大学地文研究会天文部。
 
-Mellinger画像は、上映・公開配布の前に[作者の利用条件](https://milkywaysky.com/licenses.html)を確認し、必要な許諾を取得してください。
-Gaiaデータ・Hipparcos星表・StarNet2の出典と利用条件は、各方式のドキュメントを参照してください。
+Gaiaデータと、そこから生成した `output/` の原盤にはGPLではなく、CC BY-NC 3.0 IGOが適用されます。
+クレジットは `ESA/Gaia/DPAC` です。条件は[NOTICE](NOTICE)を参照してください。

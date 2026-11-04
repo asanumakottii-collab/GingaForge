@@ -235,3 +235,4 @@ column.3.galaxy.ohp.flux-gain = 0.05
 [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3)、
 [ESA Archiveのプログラムアクセス](https://www.cosmos.esa.int/web/gaia-users/archive/programmatic-access)。
 GaiaデータはESA/Gaia/DPACによります。発表等では[Gaiaの謝辞・引用案内](https://www.cosmos.esa.int/web/gaia-users/credits)に従ってください。
+Gaiaデータと、そこから生成した原盤には[CC BY-NC 3.0 IGO](https://www.cosmos.esa.int/web/gaia-users/license)が適用されます（[NOTICE](../NOTICE)）。

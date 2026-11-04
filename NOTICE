@@ -1,0 +1,29 @@
+GingaForge
+Copyright (C) 2007, 2012-2014, 2026 東京大学地文研究会天文部
+
+
+プログラム
+
+  コード、設定ファイル、ドキュメントは GPL-2.0-or-later で配布します。
+  全文は LICENSE を参照してください。
+  コードの一部は Orb Transform Library (OTL) から移行して変更したものです。
+
+
+Gaia データ
+
+  次のものには GPL ではなく、Gaia データの利用条件が適用されます。
+
+  - output/gaia-etch/ と output/gaia-ohp/ の原盤
+    （Gaia DR3 の G 帯光量を集計・加工して生成したもの）
+  - --download-gaia で取得するデータ（リポジトリには含みません）
+
+  クレジット: ESA/Gaia/DPAC
+  ライセンス: CC BY-NC 3.0 IGO
+    https://www.cosmos.esa.int/web/gaia-users/license
+    https://creativecommons.org/licenses/by-nc/3.0/igo/
+  利用規約:
+    https://www.cosmos.esa.int/web/esdc/terms-and-conditions
+
+  商用利用には ESA への事前の申請が必要です（data.licences@esa.int）。
+  発表等での謝辞と引用は、次の案内に従ってください。
+    https://www.cosmos.esa.int/web/gaia-users/credits
