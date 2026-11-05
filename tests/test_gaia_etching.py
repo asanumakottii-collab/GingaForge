@@ -598,7 +598,6 @@ class GaiaCommandTests(unittest.TestCase):
             config = self.column_config(directory, "galaxy.etch.render=holes\ncolumn.count=2\n"
                                                    "column.2.galaxy.etch.render=gray\n")
             with patch("sys.stdout", new_callable=StringIO) as stdout:
-                self.assertEqual(0, main(["-f", str(config)]))
                 self.assertEqual(0, main(["-mirrored", "-f", str(config)]))
             self.assertIn("1200 dpi の階調の画像", stdout.getvalue())
             output = Path(directory) / "output" / "galaxy" / "inverted"
@@ -633,6 +632,16 @@ class GaiaCommandTests(unittest.TestCase):
                 self.assertEqual(0, main(["-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
             self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg", "galaxy-1.pdf", "galaxy-1.svg"],
+                             sorted(p.name for p in output.iterdir()))
+
+    def test_mirrored_outputs_svg_and_pdf_too(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.config_and_input(directory)
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-mirrored", "-f", str(config)]))
+            output = Path(directory) / "output" / "galaxy" / "inverted"
+            self.assertEqual(["galaxy-0-mirrored.pdf", "galaxy-0.pdf", "galaxy-0.svg",
+                              "galaxy-1-mirrored.pdf", "galaxy-1.pdf", "galaxy-1.svg"],
                              sorted(p.name for p in output.iterdir()))
 
 
