@@ -3,6 +3,7 @@
 
 ``render`` で、円形の穴（holes）か、開口率の階調（gray）・点描（dither）の画像かを選ぶ。
 ``column.count`` を2以上にすると、列ごとに設定を変えた原盤一式を用紙に左から並べる。
+``row.count`` を2以上にすると、その全列を同じ内容で用紙に上から並べる。
 """
 
 import argparse
@@ -41,6 +42,17 @@ def _selected_plates(props):
     return {divmod(names.index(name), 2) for name in selected}
 
 
+def _row_count(props):
+    """``row.count`` を返す。2行目以降は1行目のコピーなので、行ごとの設定はない。"""
+    try:
+        count = int(props.get("row.count", 1))
+    except ValueError as exc:
+        raise ValueError("row.count: 1以上の整数を指定してください。") from exc
+    if count < 1:
+        raise ValueError("row.count: 1以上の整数を指定してください。")
+    return count
+
+
 def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mirrored=False):
     column = int(props.get("plate.column", 1))
     row = int(props.get("plate.row", 1))
@@ -50,7 +62,7 @@ def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mir
     # output/<設定ファイル名>/ の下で、白地に黒穴（normal）と黒地に白穴（inverted）を分ける。
     output_dir = output_directory(config_path, "inverted" if invert_color else "normal")
     args = (column, row, frame_diameter / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings,
-            _selected_plates(props))
+            _selected_plates(props), _row_count(props))
     if mirrored:
         return PlateWriterPDF(*args, mirrored=True)
     return PlateWriterPDF(*args) if pdf else PlateWriterSVG(*args)
@@ -59,7 +71,7 @@ def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mir
 def _column_properties(props):
     """列ごとの ``(列で変えた設定, 列の設定)`` を左の列から返す。
 
-    ``column.<列番号>.<キー> = 値`` は、その列だけ ``<キー>`` の値を変える。用紙の配置と白黒は全列共通。
+    ``column.<列番号>.<キー> = 値`` は、その列だけ ``<キー>`` の値を変える。用紙の配置（行の数を含む）と白黒は全列共通。
     """
     try:
         count = int(props.get("column.count", 1))
@@ -76,8 +88,8 @@ def _column_properties(props):
             raise ValueError(f"{key}: column.<列番号>.<キー> の形で書いてください。")
         if not 1 <= int(number) <= count:
             raise ValueError(f"{key}: 列番号は1〜{count}（column.count）にしてください。")
-        if name.startswith(("plate.", "column.")) or name == "color.invert":
-            raise ValueError(f"{key}: 用紙の配置・白黒（plate.*、color.invert）は全列共通です。")
+        if name.startswith(("plate.", "column.", "row.")) or name == "color.invert":
+            raise ValueError(f"{key}: 用紙の配置・白黒（plate.*、row.count、color.invert）は全列共通です。")
         # 打ち間違えたキーが、列の見出しに書かれるだけで無視されないように。
         if name not in props:
             raise ValueError(f"{key}: 列で変える {name} は、列の指定なしでもこのファイルに書いてください。")

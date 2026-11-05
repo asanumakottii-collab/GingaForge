@@ -556,6 +556,57 @@ class GaiaCommandTests(unittest.TestCase):
             texts = [e.text for e in ET.parse(pages[0]).getroot().iter("{http://www.w3.org/2000/svg}text")]
             self.assertEqual(["N0", "S0", "N1", "S1"], texts)
 
+    def test_rows_copy_all_columns(self):
+        from pypdf import PdfReader
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.column_config(directory, "column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\nrow.count=2\n"
+                                                   "plate.select=N0,N1\n")
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-f", str(config)]))
+            output = Path(directory) / "output" / "galaxy" / "inverted"
+            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
+            self.assertEqual(8, PdfReader(output / "galaxy-0.pdf").pages[0].extract_text().count(" #"))
+            svg = ET.parse(output / "galaxy-0.svg").getroot()
+            namespace = "{http://www.w3.org/2000/svg}"
+            texts = [element.text for element in svg.iter(namespace + "text")]
+            # 見出しは用紙の上に1回。原盤名は2列×2行×2枚。
+            self.assertEqual(["#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2"], texts[:4])
+            self.assertEqual(sorted([f"{name} #{column}" for name in ("N0", "N1") for column in (1, 2)] * 2),
+                             sorted(texts[4:]))
+            # 上半分の1行目を148.5 mm下へずらすと、下半分の2行目に一致する。
+            circles = [(float(c.attrib["cx"][:-2]), float(c.attrib["cy"][:-2]), c.attrib["r"])
+                       for c in svg.iter(namespace + "circle")]
+            first = sorted((x, round(y, 6), r) for x, y, r in circles if y < 148.5)
+            second = sorted((x, round(y - 148.5, 6), r) for x, y, r in circles if y >= 148.5)
+            self.assertGreater(len(first), 4)
+            self.assertEqual(first, second)
+
+    def test_rows_of_images_are_copies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.column_config(directory, "galaxy.etch.render=gray\nrow.count=2\nplate.select=N0,S1\n")
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-svg", "-f", str(config)]))
+            svg = Path(directory) / "output" / "galaxy" / "inverted" / "galaxy-0.svg"
+            images = self.svg_images(svg)
+            self.assertEqual(4, len(images))
+            np.testing.assert_array_equal(images[0][1], images[1][1])
+            np.testing.assert_array_equal(images[2][1], images[3][1])
+            namespace = "{http://www.w3.org/2000/svg}"
+            texts = [e for e in ET.parse(svg).getroot().iter(namespace + "text")]
+            # 両方の段がある2行は、上から N・S・N・S の段になる。
+            positions = sorted((float(e.attrib["y"][:-2]), e.text) for e in texts)
+            self.assertEqual(["N0", "S1", "N0", "S1"], [text for _, text in positions])
+
+    def test_one_row_output_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plain, counted = (self.column_config(Path(directory) / name, "plate.select=N0,N1\n" + settings)
+                              for name, settings in (("plain", ""), ("counted", "row.count=1\n")))
+            with patch("sys.stdout", new_callable=StringIO):
+                self.assertEqual(0, main(["-svg", "-f", str(plain)]))
+                self.assertEqual(0, main(["-svg", "-f", str(counted)]))
+            pages = [config.parent / "output" / "galaxy" / "inverted" / "galaxy-0.svg" for config in (plain, counted)]
+            self.assertEqual(pages[0].read_text(), pages[1].read_text())
+
     def test_invalid_column_settings_fail_before_output(self):
         cases = (
             ("column.count=0\n", "column.count"),
@@ -566,6 +617,11 @@ class GaiaCommandTests(unittest.TestCase):
             ("column.count=2\ncolumn.2.plate.frame-diameter=10\n", "全列共通"),
             ("column.count=2\ncolumn.2.color.invert=no\n", "全列共通"),
             ("column.count=2\ncolumn.2.plate.select=N0\n", "全列共通"),
+            ("row.count=2\ncolumn.count=2\ncolumn.2.row.count=1\n", "全列共通"),
+            ("row.count=0\n", "row.count"),
+            ("row.count=two\n", "row.count"),
+            # 全原盤を2行にすると、1段の高さが74.25 mmで、plate.row=2 の原盤は37.125 mmまで。
+            ("row.count=2\nplate.frame-diameter=40\n", "plate.frame-diameter"),
             ("plate.select=N0,X1\n", "plate.select"),
             ("plate.select=\n", "plate.select"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\ncolumn.02.galaxy.etch.flux-gain=3\n", "重複"),

@@ -331,7 +331,7 @@ column.3.galaxy.ohp.raster-dpi = 600
 ```
 
 同梱の `gaia-ohp.properties` は `column.count = 3` で、`column.<列番号>.*` の指定がないため、3列とも同じ `gray` の原盤です。
-`output/gaia-ohp/inverted/gaia-ohp-0.pdf`（A4・1ページ、約0.84 MB）の各列は、上から N0・N1・S0・S1 の順で、`plate.select` で選んだ原盤だけを出力します。
+`output/gaia-ohp/inverted/gaia-ohp-0.pdf`（A4・1ページ、約0.84 MB）の各列は、`plate.select` で選んだ N0・N1 を `row.count = 2` の2行分出力します。
 
 - 描き方が違う列も、同じ用紙に並べられます。
 - 各列の上に「#列番号」と、その列で変えた設定（`キー = 値`）を書き出します。変えていない列は `(no changes)` です。
@@ -342,6 +342,19 @@ column.3.galaxy.ohp.raster-dpi = 600
 - 穴・画像と天の川強調の黒点・基準点は、列ごとに4原盤から計算します。生成時間は列の数にほぼ比例します。
 - `galaxy.gaia.*` を列ごとに変える場合は、`galaxy.gaia.input` も列ごとに別のフォルダにして `--download-gaia` で取得してください。
 - `column.count` を書かない場合は1列です。`gaia-etch.properties` でも使えます。
+
+## 行で同じ原盤を並べる
+
+`row.count` を2以上にすると、用紙を縦に等分した行に、全列の原盤を同じ内容で上から並べます。
+2行目以降は1行目のコピーで、行ごとの設定はありません。
+
+- 同梱の `gaia-ohp.properties` は `column.count = 3`、`row.count = 2` で、上半分と下半分に N0・N1 を3列ずつ、計12枚並べます。
+- 原盤のない段（N/S）の場所は行に取りません。`plate.select = N0, N1` の2行では1行が用紙の半分を使い、1行目の位置は1行のときと同じです。
+  N・Sの両方を選んだ2行は、上から N・S・N・S の段になり、1段の高さは74.25 mmです。
+- 原盤が1段の高さ ÷ `plate.row` に収まらない場合はエラーにします。
+- 列の見出しは用紙の上に1回だけ書きます。原盤の名前は1行目と同じです（例: `N0 #2`）。
+- 光量の集計は1行目の分だけなので、行を増やしても集計の時間は増えません。
+- `row.count` は全列共通です（`column.<列番号>.row.count` は書けません）。書かない場合は1行です。
 
 ## 設定
 
@@ -403,6 +416,7 @@ column.3.galaxy.ohp.raster-dpi = 600
 | `plate.row` | 1 | 2 | 各段に縦に並べる原盤の数 |
 | `plate.frame-diameter` | 0 | 40 | 円形の原盤枠の直径（出力上のmm）。0なら自動計算 |
 | `column.count` | （なし） | 3 | 列の数（上記「列ごとに設定を変えて並べる」） |
+| `row.count` | （なし） | 2 | 行の数（上記「行で同じ原盤を並べる」） |
 | `color.invert` | yes | yes | yes: 黒地に白（`inverted/`）、no: 白地に黒（`normal/`） |
 
 ## 出典
