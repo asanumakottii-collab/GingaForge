@@ -1,17 +1,81 @@
 # 全体の構成
 
+GingaForgeの全体像をまとめます。インストールと基本の使い方は [README](../README.md)、
+光量の計算や描き方の詳細と設定の一覧は [gaia.md](gaia.md) を参照してください。
+
+## 処理の流れ
+
+どちらのコマンドも同じ処理を通ります。違うのは設定ファイルの値です。
+
+```mermaid
+flowchart TD
+    A["Gaia Archive<br/>（--download-gaia のときだけ通信）"] --> B["source/gaia/<br/>0.1度ごとの光量のキャッシュ"]
+    B --> C["原盤セルへの集計<br/>（平らな原板へ投影して分配）"]
+    C --> D["天の川強調<br/>（milky-way = yes のとき）"]
+    D --> E{"render"}
+    E -->|holes| F["円形の穴を配置"]
+    E -->|"gray / dither"| G["開口率の画像を作成"]
+    F --> H["SVG・PDF"]
+    G --> H
+```
+
+| 段階 | 内容 | 主な処理 |
+|---|---|---|
+| 取得 | Gaia DR3の全天体を空の区画ごとに集計して保存する | `gaia_catalog.download_gaia` |
+| 読み込み | キャッシュの条件とチェックサムを確かめて読む | `gaia_catalog.iter_flux_bins` |
+| 集計 | 空の区画の光量を、原盤上のセルごとの必要な開口面積にする | `EtchingBuilder.add_bin` |
+| 強調 | 背景に相当する明るさを差し引く | `EtchingBuilder._enhance_milky_way` |
+| 描画 | 開口面積を穴または画像にする | `EtchingBuilder.build` / `build_raster` |
+| 書き出し | 用紙に配置してSVG・PDFにする | `plate_writer` |
+
+既存の原盤は、読み込みから描画までが成功した後で上書きします。途中で失敗しても前回の原盤は残ります。
+
+### 用語
+
+| 用語 | 意味 |
+|---|---|
+| 原盤（原板） | 投影機に入れる1枚分の円形の版。N0・N1・S0・S1の4枚で担当領域を覆う |
+| 集計ビン | Gaiaの光量を合計する空の区画（同梱設定は銀経・銀緯0.1度） |
+| セル | 原盤上で光量をまとめる正方形の区画（`cell-size-mm`） |
+| 開口面積 | 光を通す面積。投影の明るさはこの面積に比例するものとして扱う |
+| 開口率 | セルの必要な開口面積 ÷ セルの面積 |
+| 列 | 用紙を横に等分した区画。列ごとに設定を変えて原盤を比べられる（`column.count`） |
+
 ## 方式とコマンド
 
-| コマンド | 設定ファイル | 入力 | 出力（同梱設定） |
+| コマンド | 用途 | 設定ファイル | 出力（同梱設定） |
 |---|---|---|---|
-| `gaia-etch` | `gaia-etch.properties` | `source/gaia/` | `output/gaia-etch/inverted/gaia-etch-*.svg/pdf` |
-| `gaia-ohp` | `gaia-ohp.properties` | `source/gaia/` | `output/gaia-ohp/inverted/gaia-ohp-*.svg/pdf` |
+| `gaia-etch` | 金属エッチング | `gaia-etch.properties` | `output/gaia-etch/inverted/gaia-etch-*.svg`・`.pdf` |
+| `gaia-ohp` | OHPフィルム印刷 | `gaia-ohp.properties` | `output/gaia-ohp/inverted/gaia-ohp-*.svg`・`.pdf` |
 
 `gingaforge gaia-ohp` は `gingaforge gaia-etch -f gaia-ohp.properties` と同じです。
-各コマンドのオプションは `gingaforge <コマンド> --help` で表示します。
 `gingaforge` コマンドは `python -m gingaforge` でも実行できます。
 
-ライブラリとして使う場合は、`from gingaforge.gaia_etch import generate` で原盤SVG・PDFを生成します。
+同梱の設定の主な違いは次のとおりです。
+
+| 設定 | `gaia-etch` | `gaia-ohp` |
+|---|---:|---:|
+| 描き方 `render` | holes（円形の穴） | gray（階調） |
+| 集計セル `cell-size-mm` | 0.4 mm | 0.033 mm |
+| 光量倍率 `flux-gain` | 0.05 | 0.3 |
+| 天の川強調 `milky-way` | no | yes |
+| 原板の距離 `plate-distance` | 50 mm | 400 mm |
+| 原盤枠の直径 `plate.frame-diameter` | 138.5 mm（自動計算） | 40 mm |
+| 用紙 | 2枚（1枚に1原盤） | 1枚（2原盤 × 3列） |
+
+### オプション
+
+| オプション | 内容 |
+|---|---|
+| `-f <設定ファイル>` | 別の設定ファイルを使う（相対パスは実行時のフォルダが基準） |
+| `-svg` / `-pdf` | SVGのみ / PDFのみ出力。省略時は両方 |
+| `-mirrored` | SVG・PDFに加えて、裏面印刷用の左右反転PDFも出力 |
+| `--download-gaia` | Gaiaの光量を取得してから生成 |
+
+`-svg`・`-pdf`・`-mirrored` は同時に指定できません。一覧は `gingaforge <コマンド> --help` で表示します。
+
+`--download-gaia` が必要なのは、初回と `galaxy.gaia.*` の等級・集計幅を変えたときです。
+寸法・明るさ・描き方だけを変えたときは再取得しません。通常の実行は通信しません。
 
 ## 担当領域
 
@@ -20,20 +84,50 @@
 
 | 原盤 | 銀経の範囲 | 中心銀経 |
 |---|---|---|
+| S1 | 240度以上300度未満 | 270度 |
+| S0 | 300度以上360度未満 | 330度 |
 | N0 | 0度以上60度未満 | 30度 |
 | N1 | 60度以上120度未満 | 90度 |
-| S0 | 300度以上360度未満 | 330度 |
-| S1 | 240度以上300度未満 | 270度 |
+
+空では上の表の順につながり、銀経240度から0度を通って120度までの240度分を担当します。
 
 - 銀経は0度以上360度未満に正規化し、各区間は下端を含み上端を含みません（境界上の星が重複しないため）。
 - 銀経120度以上240度未満、および銀緯±20度の外は対象外です。
 - N/Sは用紙の上段/下段の識別子で、赤緯・銀緯の正負を意味しません。
-- 投影では、レンズ中心を通る光線が平らな原板に当たる位置を求めます。中心配置の投影機に加えて、偏心投影機にも対応します。
+- 中心配置の投影機に加えて、偏心投影機（`projector-horizontal`・`projector-vertical`）にも対応します。投影の計算は [gaia.md](gaia.md#投影) を参照してください。
+- 恒星原盤は別プロジェクトの [OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library) が担当します。
+
+## 用紙の配置
+
+用紙はA4縦で、上半分がN、下半分がSの段です。番号（0・1）の並べ方は `plate.column`・`plate.row` で決まり、
+1用紙に入らない番号は次の用紙へ送ります。作る原盤は `plate.select` で選びます。同梱の設定はどちらも `N0, N1` です。
+
+選ばなかった原盤の場所は空きます。
+
+同梱の `gaia-etch` は `plate.column = 1`、`plate.row = 1` で2用紙に、
+`gaia-ohp` は `plate.column = 1`、`plate.row = 2`、`column.count = 3` で1用紙に並べます。
+
+```
+ gaia-etch-0       gaia-etch-1                    gaia-ohp-0
++-----------+     +-----------+                  +-----------------+
+|    N0     |     |    N1     |                  | N0   | N0  | N0  |
+|           |     |           |                  | N1   | N1  | N1  |
+|-----------|     |-----------|                  |------+-----+-----|
+|   (S0)    |     |   (S1)    |                  | (S0) |(S0) |(S0) |
+|           |     |           |                  | (S1) |(S1) |(S1) |
++-----------+     +-----------+                  +-----------------+
+                                                   #1     #2    #3
+
+（ ）は同梱の plate.select で選んでいない原盤
+```
+
+PDFは倍率100%・「用紙に合わせる」なしで印刷してください。詳しい決まりは
+[原盤枠と用紙の配置](gaia.md#原盤枠と用紙の配置)と[列ごとに設定を変えて並べる](gaia.md#列ごとに設定を変えて並べる)を参照してください。
 
 ## 出力先
 
 出力先は設定では指定せず、**設定ファイルと同じフォルダの `output/<設定ファイル名>/`** に保存します。
-ファイル名の接頭辞も設定ファイル名です。さらに `color.invert` で `normal/`（白地に黒穴）と `inverted/`（黒地に白穴）に分けます。
+さらに `color.invert` で `inverted/`（黒地に白）と `normal/`（白地に黒）に分けます。
 
 ```
 output/
@@ -42,40 +136,68 @@ output/
   gaia-ohp/inverted/        gaia-ohp.properties の出力（color.invert = yes）
 ```
 
+ファイル名は `<設定ファイル名>-<用紙番号>.svg`・`.pdf` です。`-mirrored` のPDFは `<設定ファイル名>-<用紙番号>-mirrored.pdf` になります。
+
 設定ごとにフォルダが分かれるため、ある設定の生成が別の設定の原盤を上書きすることはありません。
-既存の原盤を残したまま試す場合は、設定ファイルを同じフォルダに別名でコピーし（例: `gaia-test.properties`）、
-`-f gaia-test.properties` で指定してください。`output/gaia-test/` に出力されます。
+既存の原盤を残したまま試す場合は、設定ファイルを同じフォルダに別名でコピーして指定します。
 
-入力ファイルの相対パスも、設定ファイルの所在フォルダが基準です。
+```sh
+cp gaia-ohp.properties gaia-test.properties
+.venv/bin/gingaforge gaia-etch -f gaia-test.properties    # output/gaia-test/ に出力
+```
 
-設定ファイルの文法はJavaのプロパティファイルに準じます（`キー = 値`、`#` で始まる行はコメント）。
+## 設定ファイル
+
+設定は `.properties` ファイルに `キー = 値` の形で書きます。キーの一覧は [gaia.md の設定](gaia.md#設定)にあります。
+
+- 文法はJavaのプロパティファイルに準じますが、扱うのは1行に1つの `キー = 値`（`キー : 値` も可）だけです。行の継続やエスケープは使えません。
+- `#` または `!` で始まる行はコメントです。行の途中からのコメントは書けません（値の一部になります）。
+- `galaxy.gaia.input` などの相対パスは、設定ファイルの所在フォルダが基準です。
+
+## ライブラリとして使う
+
+原盤は `gingaforge.gaia_etch.generate` でも生成できます。戻り値は出力フォルダです。
+
+```python
+from gingaforge.gaia_etch import generate
+
+generate("gaia-ohp.properties", formats=("pdf", "pdf-mirrored"))
+```
+
+`formats` には `"svg"`・`"pdf"`・`"pdf-mirrored"` を指定します。`download=True` で `--download-gaia` と同じ動作になります。
 
 ## コードの構成
 
 ```
 pyproject.toml             パッケージ定義（gingaforge コマンド）
-gaia-etch.properties       Gaia方式の設定（金属エッチング）
-gaia-ohp.properties        Gaia方式の設定（OHPフィルム印刷、天の川強調あり）
+gaia-etch.properties       金属エッチング用の設定
+gaia-ohp.properties        OHPフィルム印刷用の設定
 src/gingaforge/            ライブラリ本体
-source/                    入力データ（Gaiaキャッシュ、gitの対象外）
+source/gaia/               Gaiaのキャッシュ（gitの対象外）
 output/                    生成物
 tests/                     テスト
 docs/                      ドキュメント
 ```
 
-| モジュール（`src/gingaforge/`） | 役割 |
-|---|---|
-| `cli.py` | 共通コマンド `gingaforge` |
-| `gaia_etch.py` | Gaia原盤の生成 |
-| `galaxy_geometry.py` | 領域の定義、レンズの公式、投影・逆投影 |
-| `gaia_catalog.py` | Gaia DR3光量マップの取得・キャッシュ検証 |
-| `galaxy_etching.py` | 光量の集計、穴の配置、開口率の画像（階調・点描）、天の川強調 |
-| `models.py` / `mathvector.py` | 座標データ、ICRSと銀河座標の変換 |
-| `plate_writer.py` | 原盤のSVG・PDF（穴はベクトル、画像は画素） |
-| `config.py` | プロパティファイルの読込、リポジトリのルート |
+| モジュール（`src/gingaforge/`） | 役割 | 主なもの |
+|---|---|---|
+| `cli.py` | 共通コマンド `gingaforge` | `main` |
+| `gaia_etch.py` | 設定の検査、列の展開、生成全体の進行 | `generate`、`main` |
+| `gaia_catalog.py` | Gaia DR3の光量の取得、キャッシュの検証・読み込み | `GaiaSettings`、`download_gaia`、`iter_flux_bins` |
+| `galaxy_geometry.py` | 担当領域、レンズの公式、投影・逆投影 | `REGIONS`、`GalaxyTransformer` |
+| `galaxy_etching.py` | セルへの集計、天の川強調、穴の配置、画像の作成 | `EtchingSettings`、`EtchingBuilder`、`gray_pixels`、`dither_pixels` |
+| `plate_writer.py` | 用紙の配置とSVG・PDFの書き出し（穴はベクトル、画像は画素） | `PlateWriterSVG`、`PlateWriterPDF` |
+| `models.py` / `mathvector.py` | 天球・原盤上の座標、ICRSと銀河座標の変換、ベクトル演算 | `SpherePosition`、`PlatePosition`、`MathVector` |
+| `config.py` | プロパティファイルの読み込み、出力先の決定 | `load_properties`、`output_directory` |
 
 ## テスト
 
 ```sh
 .venv/bin/python -m unittest discover -v
 ```
+
+| テスト（`tests/`） | 対象 |
+|---|---|
+| `test_galaxy_transformer.py` | 座標変換、投影と逆投影、原盤の書き出し |
+| `test_gaia_etching.py` | 集計、天の川強調、穴と画像の作成、Gaiaキャッシュ、コマンド、同梱の設定 |
+| `test_integration.py` | 別プロセスで実行したコマンド（設定ファイル基準の入出力、`--help`、不正なオプション） |

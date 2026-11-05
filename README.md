@@ -72,7 +72,7 @@ python3 -m venv .venv
 
 ![同じ領域を gray、dither、holes で描いた比較](docs/images/render-modes.png)
 
-<p align="center"><sub>左から <code>gray</code>（階調）・<code>dither</code>（点描）・<code>holes</code>（穴）。<code>holes</code> は同梱設定で光量倍率を下げた比較用の列です。</sub></p>
+<p align="center"><sub>左から <code>gray</code>（階調）・<code>dither</code>（点描）・<code>holes</code>（穴）。<code>holes</code> は光量倍率を下げて描いた比較用です。</sub></p>
 
 | `render` | 描き方 | 向いている用途 |
 |---|---|---|
