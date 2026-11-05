@@ -565,6 +565,9 @@ class GaiaCommandTests(unittest.TestCase):
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gian=2\n", "列の指定なし"),
             ("column.count=2\ncolumn.2.plate.frame-diameter=10\n", "全列共通"),
             ("column.count=2\ncolumn.2.color.invert=no\n", "全列共通"),
+            ("column.count=2\ncolumn.2.plate.select=N0\n", "全列共通"),
+            ("plate.select=N0,X1\n", "plate.select"),
+            ("plate.select=\n", "plate.select"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\ncolumn.02.galaxy.etch.flux-gain=3\n", "重複"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=-1\n", "列2: galaxy.etch.flux-gain"),
             ("column.count=2\ngalaxy.gaia.faint-limit=17\ncolumn.2.galaxy.gaia.faint-limit=16\n",
@@ -625,6 +628,53 @@ class GaiaCommandTests(unittest.TestCase):
                 self.assertEqual({0, 255}, set(np.unique(pixels).tolist()))
                 self.assertGreater((pixels == 255).mean(), .9)
 
+    def test_selected_plates_keep_position_and_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = "galaxy.etch.milky-way=yes\ngalaxy.etch.render=gray\n"
+            everything = self.column_config(Path(directory) / "all", settings)
+            selected = self.column_config(Path(directory) / "selected", settings + "plate.select = N0, N1\n")
+            # S1 は暗くても黒点・基準点に効くので、S1 を除いて計算すると N0 の画像が変わる。
+            sky = {region: [(start + i * .1, -.95 + j * .1, flux * (1 + (i + j) % 5), 1)
+                            for i in range(40) for j in range(20)]
+                   for region, start, flux in ((0, 28.05, .05), (3, 268.05, .005))}
+            for config in (everything, selected):
+                write_cache(config.parent / "gaia", sky)
+            with patch("sys.stdout", new_callable=StringIO) as stdout:
+                self.assertEqual(0, main(["-svg", "-f", str(everything)]))
+                stdout.truncate(0)
+                self.assertEqual(0, main(["-svg", "-f", str(selected)]))
+            self.assertIn("N0:", stdout.getvalue())
+            self.assertNotIn("S1:", stdout.getvalue())
+            namespace = "{http://www.w3.org/2000/svg}"
+            pages = [config.parent / "output" / "galaxy" / "inverted" / "galaxy-0.svg"
+                     for config in (everything, selected)]
+            roots = [ET.parse(page).getroot() for page in pages]
+            self.assertEqual(["N0", "N1"], [e.text for e in roots[1].iter(namespace + "text")])
+            frames = [[c.attrib for c in root.iter(namespace + "circle") if c.get("stroke")] for root in roots]
+            self.assertEqual(2, len(frames[1]))
+            self.assertEqual(frames[0][::2], frames[1])
+            # 全原盤の N0 の画像と、S1 の光を含めて決めた黒点・基準点も含めて同じ。
+            images = [self.svg_images(page) for page in pages]
+            self.assertEqual(1, len(images[1]))
+            self.assertTrue(np.array_equal(images[0][0][1], images[1][0][1]))
+
+    def test_page_without_selected_plates_is_not_written(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.config_and_input(directory)
+            for name, pages in (("N1", ["galaxy-1.svg"]), ("N0", ["galaxy-0.svg"]), ("S0, N0", ["galaxy-0.svg"])):
+                with self.subTest(name=name):
+                    config.write_text(config.read_text().split("plate.select")[0] + f"plate.select={name}\n")
+                    output = Path(directory) / "output" / "galaxy" / "inverted"
+                    for page in output.glob("*"):
+                        page.unlink()
+                    # N1 に光がなくても、穴の検査を通るように一様な光を置く。
+                    if name == "N1":
+                        write_cache(Path(directory) / "gaia", {1: [(90.05, .05, .01, 1)]})
+                    with patch("sys.stdout", new_callable=StringIO):
+                        self.assertEqual(0, main(["-svg", "-f", str(config)]))
+                    self.assertEqual(pages, sorted(p.name for p in output.iterdir()))
+                    write_cache(Path(directory) / "gaia", {0: [(30.05, .05, .01, 1)]})
+
     def test_default_outputs_svg_and_pdf(self):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
@@ -650,10 +700,10 @@ class BundledConfigTests(unittest.TestCase):
         """同梱の設定ファイルが、生成の前の検査（列の設定・見出しの大きさを含む）を通る。"""
         from gingaforge.config import PROJECT_ROOT, load_properties
         from gingaforge.gaia_etch import (_column_headings, _column_properties, _init_galaxy_transformer,
-                                          _init_plate_writer)
+                                          _init_plate_writer, _selected_plates)
         expected = {
             "gaia-etch.properties": [("holes", .05)],
-            "gaia-ohp.properties": [("gray", .4), ("dither", .4), ("holes", .05)],
+            "gaia-ohp.properties": [("gray", .3)] * 3,
         }
         for name, columns in expected.items():
             with self.subTest(name=name):
@@ -666,6 +716,7 @@ class BundledConfigTests(unittest.TestCase):
                     GaiaSettings.from_properties(column, path.parent)
                     _init_galaxy_transformer(column)
                 _init_plate_writer(props, path, column_headings=_column_headings([change for change, _ in found]))
+                self.assertEqual({(0, 0), (0, 1)}, _selected_plates(props))
 
 
 if __name__ == "__main__":
