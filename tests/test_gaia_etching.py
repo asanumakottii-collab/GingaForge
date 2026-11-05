@@ -836,7 +836,7 @@ class BundledConfigTests(unittest.TestCase):
                                           _init_plate_writer, _selected_plates)
         expected = {
             "gaia-etch.properties": [("holes", .05)],
-            "gaia-ohp.properties": [("gray", .3)] * 3,
+            "gaia-ohp.properties": [("gray", .4)] * 3,
         }
         for name, columns in expected.items():
             with self.subTest(name=name):

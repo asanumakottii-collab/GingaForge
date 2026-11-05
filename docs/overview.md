@@ -12,7 +12,8 @@ flowchart TD
     A["Gaia Archive<br/>（--download-gaia のときだけ通信）"] --> B["source/gaia/<br/>0.1度ごとの光量のキャッシュ"]
     B --> C["原盤セルへの集計<br/>（平らな原板へ投影して分配）"]
     C --> D["天の川強調<br/>（milky-way = yes のとき）"]
-    D --> E{"render"}
+    D --> I["端のフェード<br/>（fade.width-deg > 0 のとき）"]
+    I --> E{"render"}
     E -->|holes| F["円形の穴を配置"]
     E -->|"gray / dither"| G["開口率の画像を作成"]
     F --> H["SVG・PDF"]
@@ -25,6 +26,7 @@ flowchart TD
 | 読み込み | キャッシュの条件とチェックサムを確かめて読む | `gaia_catalog.iter_flux_bins` |
 | 集計 | 空の区画の光量を、原盤上のセルごとの必要な開口面積にする | `EtchingBuilder.add_bin` |
 | 強調 | 背景に相当する明るさを差し引く | `EtchingBuilder._enhance_milky_way` |
+| フェード | 銀経240度・120度へ向けて光量を0にする | `EtchingBuilder._faded`、`fade_gain` |
 | 描画 | 開口面積を穴または画像にする | `EtchingBuilder.build` / `build_raster` |
 | 書き出し | 用紙に配置してSVG・PDFにする | `plate_writer` |
 
@@ -58,11 +60,13 @@ flowchart TD
 |---|---:|---:|
 | 描き方 `render` | holes（円形の穴） | gray（階調） |
 | 集計セル `cell-size-mm` | 0.4 mm | 0.033 mm |
-| 光量倍率 `flux-gain` | 0.05 | 0.3 |
+| 光量倍率 `flux-gain` | 0.05 | 0.4 |
 | 天の川強調 `milky-way` | no | yes |
+| 端のフェード `fade.width-deg` | なし | 15度 |
 | 原板の距離 `plate-distance` | 50 mm | 400 mm |
-| 原盤枠の直径 `plate.frame-diameter` | 138.5 mm（自動計算） | 40 mm |
-| 用紙 | 2枚（1枚に1原盤） | 1枚（2原盤 × 3列） |
+| レンズの焦点距離 `focal-length` | 19 mm | 30 mm |
+| 原盤枠の直径 `plate.frame-diameter` | 138.5 mm（自動計算） | 50 mm |
+| 用紙 | 2枚（1枚に1原盤） | 1枚（2原盤 × 3列 × 2行の計12枚） |
 
 ### オプション
 
@@ -70,7 +74,7 @@ flowchart TD
 |---|---|
 | `-f <設定ファイル>` | 別の設定ファイルを使う（相対パスは実行時のフォルダが基準） |
 | `-svg` / `-pdf` | SVGのみ / PDFのみ出力。省略時は両方 |
-| `-mirrored` | SVG・PDFに加えて、裏面印刷用の左右反転PDFも出力 |
+| `-mirrored` | SVG・PDFを出力し、PDFの2ページ目に裏面印刷用の左右反転を追加 |
 | `--download-gaia` | Gaiaの光量を取得してから生成 |
 
 `-svg`・`-pdf`・`-mirrored` は同時に指定できません。一覧は `gingaforge <コマンド> --help` で表示します。
@@ -139,7 +143,7 @@ output/
   gaia-ohp/inverted/        gaia-ohp.properties の出力（color.invert = yes）
 ```
 
-ファイル名は `<設定ファイル名>-<用紙番号>.svg`・`.pdf` です。`-mirrored` のPDFは `<設定ファイル名>-<用紙番号>-mirrored.pdf` になります。
+ファイル名は `<設定ファイル名>-<用紙番号>.svg`・`.pdf` です。`-mirrored` でも別のファイルは作らず、同じPDFの2ページ目に左右反転を追加します。
 
 設定ごとにフォルダが分かれるため、ある設定の生成が別の設定の原盤を上書きすることはありません。
 既存の原盤を残したまま試す場合は、設定ファイルを同じフォルダに別名でコピーして指定します。
@@ -164,10 +168,11 @@ cp gaia-ohp.properties gaia-test.properties
 ```python
 from gingaforge.gaia_etch import generate
 
-generate("gaia-ohp.properties", formats=("pdf", "pdf-mirrored"))
+generate("gaia-ohp.properties", formats=("svg", "pdf-mirrored"))
 ```
 
-`formats` には `"svg"`・`"pdf"`・`"pdf-mirrored"` を指定します。`download=True` で `--download-gaia` と同じ動作になります。
+`formats` には `"svg"`・`"pdf"`・`"pdf-mirrored"` を指定します。`"pdf-mirrored"` は `"pdf"` と同じファイルに2ページ目を加えるものなので、`"pdf"` と一緒には指定しません。
+`download=True` で `--download-gaia` と同じ動作になります。
 
 ## コードの構成
 
@@ -185,10 +190,10 @@ docs/                      ドキュメント
 | モジュール（`src/gingaforge/`） | 役割 | 主なもの |
 |---|---|---|
 | `cli.py` | 共通コマンド `gingaforge` | `main` |
-| `gaia_etch.py` | 設定の検査、列の展開、生成全体の進行 | `generate`、`main` |
+| `gaia_etch.py` | 設定の検査、原盤の選択、列・行の展開、生成全体の進行 | `generate`、`main` |
 | `gaia_catalog.py` | Gaia DR3の光量の取得、キャッシュの検証・読み込み | `GaiaSettings`、`download_gaia`、`iter_flux_bins` |
 | `galaxy_geometry.py` | 担当領域、レンズの公式、投影・逆投影 | `REGIONS`、`GalaxyTransformer` |
-| `galaxy_etching.py` | セルへの集計、天の川強調、穴の配置、画像の作成 | `EtchingSettings`、`EtchingBuilder`、`gray_pixels`、`dither_pixels` |
+| `galaxy_etching.py` | セルへの集計、天の川強調、端のフェード、穴の配置、画像の作成 | `EtchingSettings`、`EtchingBuilder`、`fade_gain`、`gray_pixels`、`dither_pixels` |
 | `plate_writer.py` | 用紙の配置とSVG・PDFの書き出し（穴はベクトル、画像は画素） | `PlateWriterSVG`、`PlateWriterPDF` |
 | `models.py` / `mathvector.py` | 天球・原盤上の座標、ICRSと銀河座標の変換、ベクトル演算 | `SpherePosition`、`PlatePosition`、`MathVector` |
 | `config.py` | プロパティファイルの読み込み、出力先の決定 | `load_properties`、`output_directory` |
@@ -202,5 +207,5 @@ docs/                      ドキュメント
 | テスト（`tests/`） | 対象 |
 |---|---|
 | `test_galaxy_transformer.py` | 座標変換、投影と逆投影、原盤の書き出し |
-| `test_gaia_etching.py` | 集計、天の川強調、穴と画像の作成、Gaiaキャッシュ、コマンド、同梱の設定 |
+| `test_gaia_etching.py` | 集計、天の川強調、端のフェード、穴と画像の作成、列と行の配置、原盤の選択、Gaiaキャッシュ、コマンド、同梱の設定 |
 | `test_integration.py` | 別プロセスで実行したコマンド（設定ファイル基準の入出力、`--help`、不正なオプション） |
