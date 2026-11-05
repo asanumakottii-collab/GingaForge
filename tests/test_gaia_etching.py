@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 from gingaforge.gaia_catalog import (GaiaSettings, build_queries, iter_flux_bins, iter_flux_samples,
                           _votable_to_csv, file_sha256)
-from gingaforge.galaxy_etching import EtchingBuilder, EtchingSettings, dither_pixels
+from gingaforge.galaxy_etching import EtchingBuilder, EtchingSettings, dither_pixels, fade_gain
 from gingaforge.gaia_etch import GalaxyTransformer, main
 from gingaforge.models import SpherePosition
 import numpy as np
@@ -301,6 +301,81 @@ class EtchingTests(unittest.TestCase):
         builder.add_sample(position(30.01, .01), .2)
         with self.assertRaises(ValueError):
             builder.build()
+
+    def test_fade_settings(self):
+        self.assertEqual(0., EtchingSettings.from_properties({}).fade_width_deg)
+        self.assertEqual(15., EtchingSettings.from_properties({"galaxy.ohp.fade.width-deg": "15"}).fade_width_deg)
+        self.assertEqual(7.5, EtchingSettings.from_properties({"galaxy.etch.fade.width-deg": "7.5"}).fade_width_deg)
+        with self.assertRaisesRegex(ValueError, "galaxy.ohp.fade.width-deg"):
+            EtchingSettings.from_properties({"galaxy.ohp.fade.width-deg": "-1"})
+
+    def test_fade_gain_reaches_zero_at_both_longitudes_and_rises_smoothly(self):
+        self.assertEqual(0., fade_gain(120., 15.))
+        self.assertEqual(0., fade_gain(240., 15.))
+        self.assertEqual(1., fade_gain(105., 15.))
+        self.assertEqual(1., fade_gain(255., 15.))
+        self.assertEqual(1., fade_gain(0., 15.))
+        self.assertEqual(1., fade_gain(300., 15.))
+        # 両端で同じ形。広いフェードが0度をまたいでも連続する。
+        self.assertAlmostEqual(fade_gain(100., 40.), fade_gain(260., 40.))
+        self.assertAlmostEqual(fade_gain(355., 130.), fade_gain(355. - 360., 130.))
+        gains = [fade_gain(120. - width, 15.) for width in np.linspace(0., 15., 151)]
+        self.assertTrue(all(a < b for a, b in zip(gains, gains[1:])))
+        # 見た目の明るさ（光量の3乗根）がフェードの中央で半分。両端には折れ目がない。
+        self.assertAlmostEqual(.5, fade_gain(112.5, 15.) ** (1 / 3))
+        self.assertLess(gains[1] - gains[0], 1e-5)
+        self.assertLess(gains[-1] - gains[-2], .01)
+
+    def uniform_band_builder(self, lon_start, lon_end, **settings):
+        builder = EtchingBuilder(self.t, EtchingSettings(cell_mm=.4, **settings), 69.25)
+        for lon in np.arange(lon_start, lon_end, .5):
+            for lat in np.arange(-5., 5., .5):
+                builder.add_bin(lon, lon + .5, lat, lat + .5, 1e-3 * (1 + abs(lat)))
+        return builder
+
+    def test_fade_leaves_inside_alone_and_closes_the_edge(self):
+        plain = self.uniform_band_builder(60., 120.)._cells_to_place()
+        builder = self.uniform_band_builder(60., 120., fade_width_deg=15.)
+        faded = builder._cells_to_place()
+        self.assertEqual(plain.keys(), faded.keys())
+        for key, area in plain.items():
+            center = self.t.inverse_transform_unit((key[2] + .5) * builder.cell, (key[3] + .5) * builder.cell, *key[:2])
+            lon = center.to_galactic()[0]
+            self.assertAlmostEqual(area * fade_gain(lon, 15.), faded[key])
+            if lon < 105.:
+                self.assertEqual(area, faded[key])
+            if lon > 119.8:
+                self.assertLess(faded[key], area * 1e-6)
+        # 強調前の光量（linear）は変えない。
+        self.assertEqual(sum(plain.values()), sum(builder.cells.values()))
+
+    def test_fade_of_selected_plate_keeps_milky_way_levels(self):
+        settings = dict(milky_way=True, milky_way_smoothing_mm=.4)
+        plain = self.uniform_band_builder(60., 120., **settings)
+        faded = self.uniform_band_builder(60., 120., fade_width_deg=15., **settings)
+        plain._cells_to_place(), faded._cells_to_place()
+        self.assertEqual(plain.milky_way, faded.milky_way)
+
+    def test_fade_with_holes_and_gray_output(self):
+        settings = dict(flux_gain=20., fade_width_deg=15.)
+        holes, plates = self.uniform_band_builder(60., 120., **settings).build()
+        self.assertGreater(len(holes), 0)
+        edge = self.t.transform_unit(position(120.), 0, 1).ymm
+        inner = self.t.transform_unit(position(105.), 0, 1).ymm
+        near_edge = sum(1 for _, _, _, y in holes if abs(y - edge) < abs(inner - edge) * .1)
+        self.assertEqual(0, near_edge)
+
+        builder = self.uniform_band_builder(60., 120., render="gray", raster_dpi=300., **settings)
+        images, plates = builder.build_raster()
+        dir_, index, pixels, left, top, width, height = images[0]
+        self.assertEqual((0, 1), (dir_, index))
+        self.assertLess(plates[1]["requested_area_mm2"], plates[1]["linear_area_mm2"])
+        rows = top + (np.arange(pixels.shape[0]) + .5) * height / pixels.shape[0]
+        lit = rows[pixels.any(axis=1)]
+        # 120度の側（y が小さい側）は開口が途切れ、60度の側は端まで光がある。
+        self.assertGreater(lit.min(), edge + .1)
+        self.assertLess(lit.max(), self.t.transform(position(60.)).ymm + 2 * builder.cell)
+        self.assertGreater(lit.max(), self.t.transform(position(60.)).ymm - 2 * builder.cell)
 
     def test_render_settings(self):
         self.assertEqual(("holes", 1200.), (self.settings.render, self.settings.raster_dpi))
@@ -775,6 +850,8 @@ class BundledConfigTests(unittest.TestCase):
                     _init_galaxy_transformer(column)
                 _init_plate_writer(props, path, column_headings=_column_headings([change for change, _ in found]))
                 self.assertEqual({(0, 0), (0, 1)}, _selected_plates(props))
+        ohp = EtchingSettings.from_properties(load_properties(PROJECT_ROOT / "gaia-ohp.properties"))
+        self.assertEqual(15., ohp.fade_width_deg)
 
 
 if __name__ == "__main__":

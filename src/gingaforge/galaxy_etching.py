@@ -7,6 +7,7 @@ OHP印刷用の画像（階調・点描）では、セルの必要穴面積を�
 プリンターの画素に合わせた解像度で描く。
 Gaiaの集計ビンの光量は、原盤上でビンとセルが重なる面積に比例して分配する。
 天の川強調を有効にすると、背景に相当する一様な明るさを差し引いてから穴・画像にする。
+端のフェードを有効にすると、担当領域の両端の銀経120度・240度に近づくほど開口を絞り、そこで光量を0にする。
 """
 
 from collections import defaultdict
@@ -121,6 +122,24 @@ class _Holes:
 
 RENDERS = ("holes", "gray", "dither")
 
+# 光量を0にする銀経（度）。担当領域（240度から0度を通って120度まで）の両端。
+FADE_LONGITUDES = (120., 240.)
+
+
+def fade_gain(longitude, width):
+    """銀経 longitude（度）の光量に掛ける倍率。FADE_LONGITUDES で0、そこから経度 width 離れると1。
+
+    t をフェード内の位置（0〜1）として smoothstep(t)³ とする。smoothstep で両端の傾きを0にし、
+    フェードの始まりと終わりに境目が見えないようにする。見た目の明るさは光量のほぼ3乗根に比例する
+    （CIE明度 L*、暗所のスティーブンスのべき法則）ため、3乗すると、光量ではなく見た目の明るさが
+    smoothstep で変わる。光量に比例させて下げると、0の手前まで明るく見えて端が切れたように見える。
+    """
+    distance = min(abs((longitude - edge + 180.) % 360. - 180.) for edge in FADE_LONGITUDES)
+    if distance >= width:
+        return 1.
+    t = distance / width
+    return (t * t * (3. - 2. * t)) ** 3
+
 
 @dataclass(frozen=True)
 class EtchingSettings:
@@ -139,6 +158,8 @@ class EtchingSettings:
     # 描き方。holes: 円形の穴、gray: 開口率の階調画像、dither: 開口率を誤差拡散した点の画像。
     render: str = "holes"
     raster_dpi: float = 1200.
+    # 銀経120度・240度へ光量を落とすフェードの経度幅（度）。0ならフェードしない。
+    fade_width_deg: float = 0.
 
     @classmethod
     def from_properties(cls, props):
@@ -176,8 +197,9 @@ class EtchingSettings:
             raise ValueError(f"{prefix}.milky-way: 0 <= black-percentile < anchor-percentile <= 100 としてください。")
         if smoothing / cell > 50:
             raise ValueError(f"{prefix}.milky-way.smoothing-mm は cell-size-mm の50倍以下にしてください。")
+        fade_width = positive_number(props, f"{prefix}.fade.width-deg", 0., allow_zero=True)
         return cls(diameter, web, cell, gain, seed, scale, milky_way, black, anchor, gamma, smoothing,
-                   render, dpi)
+                   render, dpi, fade_width)
 
 
 class EtchingBuilder:
@@ -314,13 +336,28 @@ class EtchingBuilder:
             "dark_cells": int(np.count_nonzero(smoothed <= black)), "cells": len(keys),
         }
 
+    def _faded(self, cells):
+        """各セルの面積に、セル中心の銀経のフェードの倍率を掛ける。作らない原盤のセルはそのまま返す。"""
+        width = self.settings.fade_width_deg
+        selected = {divmod(region, 2) for region in self.regions}
+
+        def gain(key):
+            dir_, index, ix, iy = key
+            center = self.transformer.inverse_transform_unit((ix + .5) * self.cell, (iy + .5) * self.cell, dir_, index)
+            return fade_gain(center.to_galactic()[0], width)
+
+        return {key: area * gain(key) if area and key[:2] in selected else area for key, area in cells.items()}
+
     def _cells_to_place(self):
-        """穴・画像にする各セルの必要面積。天の川強調を使った場合は、黒点・基準点などを ``self.milky_way`` に記録する。"""
+        """穴・画像にする各セルの必要面積。天の川強調を使った場合は、黒点・基準点などを ``self.milky_way`` に記録する。
+
+        フェードは強調の後に掛ける。先に掛けると、暗くした端が黒点・基準点の分布に混ざるため。
+        """
         if self.settings.milky_way:
             cells, self.milky_way = self._enhance_milky_way()
         else:
             cells, self.milky_way = self.cells, None
-        return cells
+        return self._faded(cells) if self.settings.fade_width_deg else cells
 
     def build(self):
         """穴と、原盤ごとの ``{plate, holes, linear_area_mm2, requested_area_mm2, capacity_loss_area_mm2}`` を返す。
