@@ -188,7 +188,8 @@ def main(argv=None, config="gaia-etch.properties", prog=None):
     output_format.add_argument("-PDF", "-pdf", "--pdf", dest="formats", action="store_const", const=("pdf",),
                                help="印刷用PDFのみ出力")
     output_format.add_argument("-mirrored", "--mirrored", dest="formats", action="store_const",
-                               const=("pdf-mirrored",), help="裏面印刷用に左右反転したPDF（<名前>-mirrored.pdf）のみ出力")
+                               const=("svg", "pdf", "pdf-mirrored"),
+                               help="SVG・PDFに加えて、裏面印刷用に左右反転したPDF（<名前>-mirrored.pdf）も出力")
     parser.set_defaults(formats=("svg", "pdf"))
     parser.add_argument("--download-gaia", action="store_true", help="光量マップを取得して生成")
     args = parser.parse_args(argv)
