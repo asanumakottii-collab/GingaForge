@@ -181,9 +181,14 @@ class EtchingSettings:
 
 
 class EtchingBuilder:
-    def __init__(self, transformer, settings, frame_radius):
-        """半径 frame_radius の円形枠の内側に穴・画像を置く。"""
+    def __init__(self, transformer, settings, frame_radius, plates=None):
+        """半径 frame_radius の円形枠の内側に穴・画像を置く。
+
+        plates: 穴・画像を作る原盤 ``(出力位置, 番号)`` の集合。Noneなら全原盤。
+        """
         self.transformer = transformer
+        self.regions = [region for region in range(len(transformer.LONGITUDE_REGIONS))
+                        if plates is None or divmod(region, 2) in plates]
         self.settings = settings
         self.radius = settings.min_diameter_mm * settings.scale / 2
         # 最終寸法における丸め誤差も安全側へ寄せる。
@@ -324,7 +329,7 @@ class EtchingBuilder:
         """
         holes, plates = _Holes(), []
         cells = self._cells_to_place()
-        for region in range(len(self.transformer.LONGITUDE_REGIONS)):
+        for region in self.regions:
             unit = divmod(region, 2)
             rng = random.Random(self.settings.seed + region)
             # 蛇行順の誤差繰越。各セルの誤差は最小穴1個未満、原盤全体では半個以内。
@@ -367,7 +372,7 @@ class EtchingBuilder:
         pixel = 25.4 / self.settings.raster_dpi
         cell_area = self.cell ** 2
         images, plates = [], []
-        for region in range(len(self.transformer.LONGITUDE_REGIONS)):
+        for region in self.regions:
             unit = divmod(region, 2)
             keys = [key for key in cells if key[:2] == unit]
             item = {"plate": ("N" if unit[0] == 0 else "S") + str(unit[1]), "max_open_fraction": 0.,

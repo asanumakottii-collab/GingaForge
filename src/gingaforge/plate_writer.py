@@ -38,10 +38,13 @@ class _PlateWriterBase:
     HEADING_SIZE = 2.5  # 列の見出しの文字の大きさの上限 (mm)
     HEADING_TOP = 5.  # 用紙の上端から列の見出しまでの余白 (mm)
 
-    def __init__(self, column, row, r, filename_prefix, invert_color, output_dir, column_headings=((),)):
+    def __init__(self, column, row, r, filename_prefix, invert_color, output_dir, column_headings=((),),
+                 plates=None):
         """r: 円形の原盤枠の半径。0なら用紙サイズと配置数から自動計算する。
 
         column_headings: 列ごとの見出しの行。用紙を列の数で横に等分し、各列に上下の原盤を一式ずつ置く。
+        plates: 枠を出力する原盤 ``(出力位置, 番号)`` の集合。Noneなら全原盤。
+        他の原盤の位置は変えず、ここにない原盤の場所は空ける。原盤が1枚もない用紙は作らない。
         """
         if column <= 0:
             raise ValueError("横の値が不正です。")
@@ -49,7 +52,8 @@ class _PlateWriterBase:
             raise ValueError("縦の値が不正です。")
         if not column_headings:
             raise ValueError("列の数が不正です。")
-        self.outs = []
+        self.outs = {}  # 用紙番号から開いた用紙
+        self.plates = plates
         self.column_headings = [tuple(lines) for lines in column_headings]
         self.number_of_plate = [0] * len(self.column_headings)  # 列ごとの出力済みの原板の数
         self.column = column
@@ -93,25 +97,30 @@ class _PlateWriterBase:
         os.makedirs(self.output_dir, exist_ok=True)
         return os.path.join(self.output_dir, f"{self.filename_prefix}{page}.{extension}")
 
-    def _write_frame(self, index, column=0):
-        """指定番号までの原盤枠を上下とも出力し、必要な用紙を開きます。"""
-        while index // (self.column * self.row) >= len(self.outs):
-            out = self._open_page(len(self.outs))
+    def _page(self, index):
+        """原盤 index の用紙を返します。初めてなら開いて、列の見出しを出力します。"""
+        page = index // (self.column * self.row)
+        if page not in self.outs:
+            out = self.outs[page] = self._open_page(page)
             for i, lines in enumerate(self.column_headings):
                 cx = self.WIDTH / len(self.column_headings) * (i + .5)
                 for j, line in enumerate(lines):
                     self._draw_text(out, cx, self.HEADING_TOP + self.heading_size * (1 + 1.25 * j),
                                     line, self.heading_size)
-            self.outs.append(out)
+        return self.outs[page]
+
+    def _write_frame(self, index, column=0):
+        """指定番号までの原盤枠を上下とも出力し、必要な用紙を開きます。"""
         while index >= self.number_of_plate[column]:
             number = self.number_of_plate[column]
-            out = self.outs[number // (self.column * self.row)]
             cx = self._get_cx(number, column)
             for i in range(2):
+                if self.plates is not None and (i, number) not in self.plates:
+                    continue
                 label = ("N" if i == 0 else "S") + str(number)
                 if len(self.column_headings) > 1:
                     label += f" #{column + 1}"
-                self._draw_frame(out, cx, self._get_cy(i, number), label)
+                self._draw_frame(self._page(number), cx, self._get_cy(i, number), label)
             self.number_of_plate[column] += 1
 
     def write_frames(self, number_of_units):
@@ -131,8 +140,7 @@ class _PlateWriterBase:
         self._write_frame(index, column)
         if not self.inside_frame(x, y):
             return
-        out = self.outs[index // (self.column * self.row)]
-        self._draw_hole(out, self._get_cx(index, column) + x, self._get_cy(dir_, index) + y, r)
+        self._draw_hole(self._page(index), self._get_cx(index, column) + x, self._get_cy(dir_, index) + y, r)
 
     def write_image(self, dir_, index, pixels, left, top, width, height, column=0):
         """列 column の原盤に、開口率の画像 pixels（uint8、255が光を通す）を枠の円で切り抜いて出力します。
@@ -143,7 +151,7 @@ class _PlateWriterBase:
         from PIL import Image
 
         self._write_frame(index, column)
-        out = self.outs[index // (self.column * self.row)]
+        out = self._page(index)
         image = Image.fromarray(pixels if self.invert_color else 255 - pixels, "L")
         cx, cy = self._get_cx(index, column), self._get_cy(dir_, index)
         self._draw_image(out, cx, cy, image, cx + left, cy + top, width, height)
@@ -220,7 +228,7 @@ class PlateWriterPDF(_PlateWriterBase):
         out.restoreState()
 
     def close(self):
-        for index, out in enumerate(self.outs):
+        for index, out in self.outs.items():
             destination = self._pdf_path(index)
             temporary = None
             try:
@@ -240,7 +248,7 @@ class PlateWriterPDF(_PlateWriterBase):
             finally:
                 if temporary is not None and os.path.exists(temporary):
                     os.unlink(temporary)
-        self.outs = []
+        self.outs = {}
 
 
 class PlateWriterSVG(_PlateWriterBase):
@@ -281,7 +289,7 @@ class PlateWriterSVG(_PlateWriterBase):
                   f"xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:href=\"data:image/png;base64,{data}\"/>")
 
     def close(self):
-        for out in self.outs:
+        for out in self.outs.values():
             out.write("</svg>")
             out.close()
-        self.outs = []
+        self.outs = {}

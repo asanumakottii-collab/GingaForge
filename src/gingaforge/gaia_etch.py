@@ -13,7 +13,7 @@ import sys
 from .config import PROJECT_ROOT, load_properties, output_directory, positive_number
 from .gaia_catalog import GaiaSettings, download_gaia, iter_flux_bins
 from .galaxy_etching import EtchingBuilder, EtchingSettings
-from .galaxy_geometry import GalaxyTransformer
+from .galaxy_geometry import REGIONS, GalaxyTransformer
 from .plate_writer import PlateWriterPDF, PlateWriterSVG
 
 
@@ -32,6 +32,15 @@ def _init_galaxy_transformer(props):
     return GalaxyTransformer(radius, sphere * scale, horizontal * scale, vertical * scale, plate * scale, focus * scale)
 
 
+def _selected_plates(props):
+    """``plate.select`` の原盤を ``(出力位置, 番号)`` の集合で返す。省略時は全原盤。"""
+    names = list(REGIONS)
+    selected = [name.strip() for name in props.get("plate.select", ",".join(names)).split(",")]
+    if not set(selected) <= set(names):
+        raise ValueError(f"plate.select: 原盤は {', '.join(names)} からカンマ区切りで指定してください。")
+    return {divmod(names.index(name), 2) for name in selected}
+
+
 def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mirrored=False):
     column = int(props.get("plate.column", 1))
     row = int(props.get("plate.row", 1))
@@ -40,7 +49,8 @@ def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mir
     invert_color = props.get("color.invert", "no").strip().lower() in {"y", "yes", "true"}
     # output/<設定ファイル名>/ の下で、白地に黒穴（normal）と黒地に白穴（inverted）を分ける。
     output_dir = output_directory(config_path, "inverted" if invert_color else "normal")
-    args = (column, row, frame_diameter / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings)
+    args = (column, row, frame_diameter / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings,
+            _selected_plates(props))
     if mirrored:
         return PlateWriterPDF(*args, mirrored=True)
     return PlateWriterPDF(*args) if pdf else PlateWriterSVG(*args)
@@ -85,15 +95,18 @@ def _column_headings(changes):
             for number, change in enumerate(changes, 1)]
 
 
-def _build_column(gaia, etching, transformer, frame_radius):
-    """1列分の原盤一式の穴・画像を作り、``(穴, 穴の半径, 画像)`` を返します。使わない方は空です。"""
+def _build_column(gaia, etching, transformer, frame_radius, plates):
+    """1列分の原盤一式の穴・画像を作り、``(穴, 穴の半径, 画像)`` を返します。使わない方は空です。
+
+    光量は全原盤の分を集計する。天の川強調の黒点・基準点が、原盤の選び方で変わらないように。
+    """
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
     print(f"平らな原板への投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
           f"原盤距離 {transformer.plate / etching.scale:g} mm / "
           f"焦点距離 {transformer.focus / etching.scale:g} mm / 倍率 {etching.scale:g}")
     lens = [transformer.lens_distance(*divmod(region, 2)) for region in range(len(regions))]
     print(f"原板とレンズの距離（出力上）: {min(lens):.4f}〜{max(lens):.4f} mm")
-    builder = EtchingBuilder(transformer, etching, frame_radius)
+    builder = EtchingBuilder(transformer, etching, frame_radius, plates)
     print(f"Gaia G={gaia.bright:g}より暗く{gaia.faint:g}以下の光量を集計します。", flush=True)
     for sky_bin in iter_flux_bins(gaia, regions, limit):
         builder.add_bin(*sky_bin)
@@ -142,6 +155,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
     props = load_properties(config_path)
     directory = config_path.parent
     # 時間のかかる集計の前に、全列の設定を確かめる。
+    plates = _selected_plates(props)
     columns = []
     for number, (change, column_props) in enumerate(_column_properties(props), 1):
         try:
@@ -166,7 +180,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
     for number, (change, gaia, etching, transformer) in enumerate(columns, 1):
         if len(columns) > 1:
             print(f"列{number}: {', '.join(f'{k} = {v}' for k, v in change.items()) or '変更なし'}", flush=True)
-        results.append(_build_column(gaia, etching, transformer, writers[0].r))
+        results.append(_build_column(gaia, etching, transformer, writers[0].r, plates))
     for writer in writers:
         with writer:
             writer.write_frames(2)
