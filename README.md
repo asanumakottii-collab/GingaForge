@@ -112,7 +112,7 @@ flowchart LR
 |---|---|
 | `-f <設定ファイル>` | 別の設定ファイルを使う |
 | `-svg` / `-pdf` | SVGのみ / PDFのみ出力 |
-| `-mirrored` | SVG・PDFに加えて、裏面印刷用の左右反転PDFも出力 |
+| `-mirrored` | SVG・PDFを出力し、PDFの2ページ目に裏面印刷用の左右反転を追加 |
 | `--download-gaia` | Gaiaの光量を取得し直してから生成 |
 
 テストは次のコマンドで実行します。

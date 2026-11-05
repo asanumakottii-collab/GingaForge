@@ -243,24 +243,25 @@ class GalaxyOutputTests(unittest.TestCase):
 
     @unittest.skipUnless(importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
                          "ReportLab and pypdf are required for PDF tests")
-    def test_mirrored_pdf_is_flipped_horizontally_into_separate_file(self):
+    def test_mirrored_pdf_adds_flipped_second_page_to_same_file(self):
         from pypdf import PdfReader
 
         with tempfile.TemporaryDirectory() as directory:
-            for mirrored in (False, True):
-                with _init_plate_writer({}, Path(directory, "gaia-etch.properties"), pdf=True,
-                                        mirrored=mirrored) as writer:
-                    writer.write_hole(0, 0, 10., 0., .5)
+            with _init_plate_writer({}, Path(directory, "gaia-etch.properties"), pdf=True, mirrored=True) as writer:
+                writer.write_hole(0, 0, 10., 0., .5)
             folder = Path(directory, "output", "gaia-etch", "normal")
-            self.assertEqual(["gaia-etch-0-mirrored.pdf", "gaia-etch-0.pdf"],
-                             sorted(p.name for p in folder.glob("*.pdf")))
-            normal, mirrored = (PdfReader(folder / name).pages[0]
-                                for name in ("gaia-etch-0.pdf", "gaia-etch-0-mirrored.pdf"))
-            content = mirrored.get_contents().get_data().decode()
-            # 描画内容は通常版と同じで、ページ全体に x → 用紙幅 - x の変換だけが加わる。
-            flip = re.search(r"-1 0 0 1 ([\d.]+) 0 cm\n", content)
+            self.assertEqual(["gaia-etch-0.pdf"], [p.name for p in folder.glob("*.pdf")])
+            normal, mirrored = PdfReader(folder / "gaia-etch-0.pdf").pages
+            self.assertEqual(["N0", "S0"], normal.extract_text().split())
+            front = normal.get_contents().get_data().decode()
+            back = mirrored.get_contents().get_data().decode()
+            # 両ページは同じ描画内容を呼び出し、2ページ目にだけ x → 用紙幅 - x の変換が加わる。
+            draw = re.search(r"/\S+ Do", front).group()
+            flip = re.search(r"-1 0 0 1 ([\d.]+) 0 cm\n", back)
             self.assertAlmostEqual(float(mirrored.mediabox.width), float(flip.group(1)), places=3)
-            self.assertEqual(normal.get_contents().get_data().decode(), content.replace(flip.group(0), "", 1))
+            self.assertNotIn("-1 0 0 1", front)
+            self.assertIn(draw, back)
+            self.assertLess(back.index(flip.group()), back.index(draw))
 
 
 if __name__ == "__main__":

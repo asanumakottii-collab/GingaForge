@@ -613,8 +613,8 @@ class GaiaCommandTests(unittest.TestCase):
             images = self.svg_images(svg)
             self.assertEqual(2, len(images))
             self.assertTrue(all(x > 105 and pixels.max() > 0 and pixels.min() == 0 for x, pixels in images))
-            for name in ("galaxy-0.pdf", "galaxy-0-mirrored.pdf"):
-                self.assertEqual(2, len(PdfReader(output / name).pages[0].images))
+            pages = PdfReader(output / "galaxy-0.pdf").pages
+            self.assertEqual([2, 2], [len(page.images) for page in pages])
 
     def test_normal_color_images_are_black_on_white(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -685,14 +685,16 @@ class GaiaCommandTests(unittest.TestCase):
                              sorted(p.name for p in output.iterdir()))
 
     def test_mirrored_outputs_svg_and_pdf_too(self):
+        from pypdf import PdfReader
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-mirrored", "-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            self.assertEqual(["galaxy-0-mirrored.pdf", "galaxy-0.pdf", "galaxy-0.svg",
-                              "galaxy-1-mirrored.pdf", "galaxy-1.pdf", "galaxy-1.svg"],
+            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg", "galaxy-1.pdf", "galaxy-1.svg"],
                              sorted(p.name for p in output.iterdir()))
+            for name in ("galaxy-0.pdf", "galaxy-1.pdf"):
+                self.assertEqual(2, len(PdfReader(output / name).pages))
 
 
 class BundledConfigTests(unittest.TestCase):

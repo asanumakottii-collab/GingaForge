@@ -164,10 +164,12 @@ class _PlateWriterBase:
 
 
 class PlateWriterPDF(_PlateWriterBase):
-    """ISO A4（210 x 297 mm）の1ページPDFをベクトルで書き出します。"""
+    """ISO A4（210 x 297 mm）のPDFをベクトルで書き出します。"""
+
+    PLATE_FORM = "plate"  # mirrored で、両ページが共有する描画内容の名前
 
     def __init__(self, *args, mirrored=False, **kwargs):
-        """mirrored: Trueなら裏面印刷用に文字も含めて左右反転し、``<名前>-mirrored.pdf`` に書き出す。"""
+        """mirrored: Trueなら2ページ目に、裏面印刷用に文字も含めて左右反転した同じ内容を追加する。"""
         from reportlab.lib.units import mm
         from reportlab.pdfgen.canvas import Canvas
 
@@ -184,20 +186,27 @@ class PlateWriterPDF(_PlateWriterBase):
         """y軸下向きのmm座標をPDFのy軸上向き座標に変換します。"""
         return (self.HEIGHT * 2 - value) * self._mm
 
-    def _pdf_path(self, page):
-        return self._output_path(f"{page}-mirrored" if self.mirrored else page, "pdf")
-
     def _open_page(self, page):
         out = self._canvas_class(
-            self._pdf_path(page),
+            self._output_path(page, "pdf"),
             pagesize=(self._x(self.WIDTH), self._x(self.HEIGHT * 2)),
             pageCompression=1,
             invariant=1,
         )
         if self.mirrored:
+            out.beginForm(self.PLATE_FORM)
+        return out
+
+    def _finish_pages(self, out):
+        """描画を終えた用紙のページを確定します。mirrored では同じ内容を2ページに置きます。"""
+        if self.mirrored:
+            out.endForm()
+            out.doForm(self.PLATE_FORM)
+            out.showPage()
             out.translate(self._x(self.WIDTH), 0)
             out.scale(-1, 1)
-        return out
+            out.doForm(self.PLATE_FORM)
+        out.showPage()
 
     def _draw_text(self, out, cx, y, text, size):
         out.setFillGray(0)
@@ -229,7 +238,7 @@ class PlateWriterPDF(_PlateWriterBase):
 
     def close(self):
         for index, out in self.outs.items():
-            destination = self._pdf_path(index)
+            destination = self._output_path(index, "pdf")
             temporary = None
             try:
                 # 既存ファイルへの直接書き込みは同期ストレージ等でタイムアウト
@@ -238,7 +247,7 @@ class PlateWriterPDF(_PlateWriterBase):
                         mode="wb", dir=os.path.dirname(os.path.abspath(destination)),
                         prefix=".otl-pdf-", suffix=".tmp", delete=False) as stream:
                     temporary = stream.name
-                    out.showPage()
+                    self._finish_pages(out)
                     stream.write(out.getpdfdata())
                 os.replace(temporary, destination)
             except OSError as exc:
