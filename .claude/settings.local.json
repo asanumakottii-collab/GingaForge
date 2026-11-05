@@ -21,7 +21,15 @@
       "Bash(PYTHONPATH=src ../../../.venv/bin/python -m unittest discover -s tests -t .)",
       "Bash(git log *)",
       "Bash(git grep *)",
-      "Bash(git count-objects *)"
+      "Bash(git count-objects *)",
+      "Bash(awk -F/ '{print $1}')",
+      "Bash(gh repo *)",
+      "Bash(xargs -0 ls -la)",
+      "Bash(awk '{print $5, $9}')",
+      "WebFetch(domain:milkywaysky.com)",
+      "WebFetch(domain:www.cosmos.esa.int)",
+      "WebSearch",
+      "WebFetch(domain:cdsarc.cds.unistra.fr)"
     ]
   }
 }
