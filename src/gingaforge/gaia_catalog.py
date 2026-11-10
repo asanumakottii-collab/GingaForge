@@ -46,8 +46,8 @@ class GaiaSettings:
         step = positive_number(props, "galaxy.gaia.sky-bin-deg", 0.1)
         if not bright < faint <= 21 or reference > 21:
             raise ValueError("Gaia等級は 0 <= bright-limit < faint-limit <= 21 としてください。")
-        if not 0.05 <= step <= 1. or not math.isclose(round(60 / step) * step, 60):
-            raise ValueError("galaxy.gaia.sky-bin-deg: 60度を等分する0.05〜1度を指定してください。")
+        if not 0.05 <= step <= 1. or not math.isclose(round(40 / step) * step, 40):
+            raise ValueError("galaxy.gaia.sky-bin-deg: 40度を等分する0.05〜1度を指定してください。")
         return cls(path, bright, faint, reference, step)
 
     def provenance(self, regions, latitude_limit):

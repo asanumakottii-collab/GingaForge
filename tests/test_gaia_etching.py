@@ -59,7 +59,7 @@ class EtchingTests(unittest.TestCase):
     def test_inverse_projection_with_offset(self):
         for horizontal, vertical in ((0., 0.), (355., 200.)):
             transformer = GalaxyTransformer(.1, 6500., horizontal, vertical, 50., 19.)
-            for lon in (0., 30., 59.9, 60., 119., 240., 270., 300., 330., 359.9):
+            for lon in (0., 30., 39.9, 40., 79.9, 80., 119., 320., 330., 359.9):
                 for lat in (-20., 0., 20.):
                     sp = position(lon, lat)
                     pp = transformer.transform(sp)
@@ -72,7 +72,7 @@ class EtchingTests(unittest.TestCase):
         builder = EtchingBuilder(self.t, self.settings, 69.25)
         # 基準穴の面積の1/100が最小穴。さらに1/16の星を16個。
         for _ in range(16):
-            builder.add_sample(position(30.01, .01), .01 / 16)
+            builder.add_sample(position(60.01, .01), .01 / 16)
         holes, plates = builder.build()
         self.assertEqual(1, len(holes))
         self.assertAlmostEqual(.02, 2 * builder.radius)
@@ -96,7 +96,7 @@ class EtchingTests(unittest.TestCase):
 
     def test_saturation_is_reported_and_not_spilled_to_dark_cells(self):
         builder = EtchingBuilder(self.t, self.settings, 69.25)
-        builder.add_sample(position(30.01, .01), 100.)
+        builder.add_sample(position(60.01, .01), 100.)
         holes, plates = builder.build()
         self.assertEqual(25, len(holes))
         self.assertGreater(plates[0]["capacity_loss_area_mm2"], 0)
@@ -107,7 +107,7 @@ class EtchingTests(unittest.TestCase):
         def run(props):
             settings = EtchingSettings.from_properties(props)
             builder = EtchingBuilder(self.t, settings, 69.25)
-            builder.add_sample(position(30.01, .01), .2)
+            builder.add_sample(position(60.01, .01), .2)
             return builder, list(builder.build()[0])
         _, first = run({})
         _, second = run({})
@@ -119,7 +119,7 @@ class EtchingTests(unittest.TestCase):
     def test_final_dimensions_follow_scale(self):
         settings = EtchingSettings.from_properties({"scale": "2"})
         builder = EtchingBuilder(GalaxyTransformer(.2, 13000., 0., 0., 100., 38.), settings, 69.25)
-        builder.add_sample(position(30.01, .01), .1)
+        builder.add_sample(position(60.01, .01), .1)
         holes, _ = builder.build()
         self.assertEqual(10, len(holes))
         self.assertTrue(math.isclose(builder.radius / settings.scale, .01))
@@ -128,9 +128,9 @@ class EtchingTests(unittest.TestCase):
     def test_outside_regions_and_physical_frame(self):
         builder = EtchingBuilder(self.t, self.settings, .1)
         builder.add_sample(position(150.), 1.)
-        builder.add_sample(position(30., 21.), 1.)
-        builder.add_sample(position(30., 10.), 1.)
-        builder.add_sample(position(30.01, .01), .1)
+        builder.add_sample(position(60., 21.), 1.)
+        builder.add_sample(position(60., 10.), 1.)
+        builder.add_sample(position(60.01, .01), .1)
         holes, plates = builder.build()
         self.assertEqual({(0, 0)}, {key[:2] for key in builder.cells})
         self.assertGreater(plates[0]["capacity_loss_area_mm2"], 0)
@@ -139,7 +139,7 @@ class EtchingTests(unittest.TestCase):
     def test_circular_frame_keeps_holes_inside_circle(self):
         # 直径10 mmの円。外接正方形の角に当たる光も足すが、円の外には穴を置かない。
         builder = EtchingBuilder(self.t, self.settings, 5.)
-        for lon in range(25, 36):
+        for lon in range(55, 66):
             for lat in range(-5, 6):
                 builder.add_sample(position(lon + .01, lat + .01), 1.)
         holes = list(builder.build()[0])
@@ -149,7 +149,7 @@ class EtchingTests(unittest.TestCase):
 
     def test_four_units_do_not_share_rounding_or_flux(self):
         builder = EtchingBuilder(self.t, self.settings, 69.25)
-        for lon in (30.01, 90.01, 270.01, 330.01):
+        for lon in (20.01, 60.01, 100.01, 340.01):
             builder.add_sample(position(lon, .01), .006)
         holes, plates = builder.build()
         self.assertEqual(4, len(holes))
@@ -190,7 +190,7 @@ class EtchingTests(unittest.TestCase):
         settings = EtchingSettings(cell_mm=.4)
         area = EtchingBuilder(lens_at_projector(), settings, 69.25)
         point = EtchingBuilder(lens_at_projector(), settings, 69.25)
-        count = self.uniform_sky((area, point), 20., -3., add_point=point)
+        count = self.uniform_sky((area, point), 50., -3., add_point=point)
         self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
         self.assertAlmostEqual(.25, self.largest_step_between_neighbours(point.cells), places=9)
         # セルの立体角は差分による近似なので、その誤差（1e-4程度）は残る。縞の0.25よりずっと小さい。
@@ -203,7 +203,7 @@ class EtchingTests(unittest.TestCase):
         transformer = lens_at_projector(355., 200.)
         area = EtchingBuilder(transformer, EtchingSettings(cell_mm=.4), 69.25)
         point = EtchingBuilder(transformer, EtchingSettings(cell_mm=.4), 69.25)
-        count = self.uniform_sky((area, point), 80., 10., add_point=point)
+        count = self.uniform_sky((area, point), 90., 10., add_point=point)
         self.assertEqual({(0, 1)}, {key[:2] for key in area.cells})
         self.assertAlmostEqual(1., sum(area.cells.values()) / (count * area.reference_area), places=12)
         self.assertGreater(self.largest_step_between_neighbours(point.cells), .2)
@@ -212,8 +212,8 @@ class EtchingTests(unittest.TestCase):
     def test_bin_is_split_by_overlap_area(self):
         builder = EtchingBuilder(lens_at_projector(), EtchingSettings(cell_mm=.4), 69.25)
         # 原盤中心（セルの角）をまたぐビン。レンズ中心がドーム中心なら、平らな原板では
-        # x = L tan b / cos(l - 30度)、y = -L tan(l - 30度)。ビンの像は各辺の両端の平均の長方形とみなす。
-        builder.add_bin(29.96, 30.06, -.04, .06, 1.)
+        # x = L tan b / cos(l - 60度)、y = -L tan(l - 60度)。ビンの像は各辺の両端の平均の長方形とみなす。
+        builder.add_bin(59.96, 60.06, -.04, .06, 1.)
         tan, cos = (lambda f: lambda degrees: f(math.radians(degrees)))(math.tan), (lambda d: math.cos(math.radians(d)))
         edge = lambda b: (tan(b) / cos(-.04) + tan(b) / cos(.06)) / 2
         x_fraction = {-1: -edge(-.04) / (edge(.06) - edge(-.04)), 0: edge(.06) / (edge(.06) - edge(-.04))}
@@ -226,14 +226,14 @@ class EtchingTests(unittest.TestCase):
     def test_bins_outside_regions_degenerate_and_invalid(self):
         builder = EtchingBuilder(self.t, self.settings, 69.25)
         builder.add_bin(150., 150.1, 0., .1, 1.)
-        builder.add_bin(30., 30.1, 20.5, 20.6, 1.)
+        builder.add_bin(60., 60.1, 20.5, 20.6, 1.)
         self.assertEqual({}, dict(builder.cells))
         # 銀緯20度ちょうどの天体だけを集計した幅0のビンは、点として1つのセルに入る。
-        builder.add_bin(30., 30.1, 20., 20., 1.)
+        builder.add_bin(60., 60.1, 20., 20., 1.)
         self.assertEqual(1, len(builder.cells))
         self.assertAlmostEqual(builder.reference_area, sum(builder.cells.values()))
         with self.assertRaises(ValueError):
-            builder.add_bin(30., 30.1, 0., .1, -1.)
+            builder.add_bin(60., 60.1, 0., .1, -1.)
 
     def test_invalid_manufacturing_settings_fail(self):
         for key, value in (("galaxy.etch.min-hole-diameter-mm", "0"),
@@ -298,7 +298,7 @@ class EtchingTests(unittest.TestCase):
         self.assertEqual(2., settings.milky_way_gamma)
         self.assertFalse(EtchingSettings.from_properties({}).milky_way)
         builder = EtchingBuilder(self.t, settings, 69.25)
-        builder.add_sample(position(30.01, .01), .2)
+        builder.add_sample(position(60.01, .01), .2)
         with self.assertRaises(ValueError):
             builder.build()
 
@@ -311,13 +311,13 @@ class EtchingTests(unittest.TestCase):
 
     def test_fade_gain_reaches_zero_at_both_longitudes_and_rises_smoothly(self):
         self.assertEqual(0., fade_gain(120., 15.))
-        self.assertEqual(0., fade_gain(240., 15.))
+        self.assertEqual(0., fade_gain(320., 15.))
         self.assertEqual(1., fade_gain(105., 15.))
-        self.assertEqual(1., fade_gain(255., 15.))
+        self.assertEqual(1., fade_gain(335., 15.))
         self.assertEqual(1., fade_gain(0., 15.))
-        self.assertEqual(1., fade_gain(300., 15.))
+        self.assertEqual(1., fade_gain(240., 15.))
         # 両端で同じ形。広いフェードが0度をまたいでも連続する。
-        self.assertAlmostEqual(fade_gain(100., 40.), fade_gain(260., 40.))
+        self.assertAlmostEqual(fade_gain(100., 40.), fade_gain(340., 40.))
         self.assertAlmostEqual(fade_gain(355., 130.), fade_gain(355. - 360., 130.))
         gains = [fade_gain(120. - width, 15.) for width in np.linspace(0., 15., 151)]
         self.assertTrue(all(a < b for a, b in zip(gains, gains[1:])))
@@ -334,8 +334,8 @@ class EtchingTests(unittest.TestCase):
         return builder
 
     def test_fade_leaves_inside_alone_and_closes_the_edge(self):
-        plain = self.uniform_band_builder(60., 120.)._cells_to_place()
-        builder = self.uniform_band_builder(60., 120., fade_width_deg=15.)
+        plain = self.uniform_band_builder(80., 120.)._cells_to_place()
+        builder = self.uniform_band_builder(80., 120., fade_width_deg=15.)
         faded = builder._cells_to_place()
         self.assertEqual(plain.keys(), faded.keys())
         for key, area in plain.items():
@@ -351,31 +351,31 @@ class EtchingTests(unittest.TestCase):
 
     def test_fade_of_selected_plate_keeps_milky_way_levels(self):
         settings = dict(milky_way=True, milky_way_smoothing_mm=.4)
-        plain = self.uniform_band_builder(60., 120., **settings)
-        faded = self.uniform_band_builder(60., 120., fade_width_deg=15., **settings)
+        plain = self.uniform_band_builder(80., 120., **settings)
+        faded = self.uniform_band_builder(80., 120., fade_width_deg=15., **settings)
         plain._cells_to_place(), faded._cells_to_place()
         self.assertEqual(plain.milky_way, faded.milky_way)
 
     def test_fade_with_holes_and_gray_output(self):
         settings = dict(flux_gain=20., fade_width_deg=15.)
-        holes, plates = self.uniform_band_builder(60., 120., **settings).build()
+        holes, plates = self.uniform_band_builder(80., 120., **settings).build()
         self.assertGreater(len(holes), 0)
         edge = self.t.transform_unit(position(120.), 0, 1).ymm
         inner = self.t.transform_unit(position(105.), 0, 1).ymm
         near_edge = sum(1 for _, _, _, y in holes if abs(y - edge) < abs(inner - edge) * .1)
         self.assertEqual(0, near_edge)
 
-        builder = self.uniform_band_builder(60., 120., render="gray", raster_dpi=300., **settings)
+        builder = self.uniform_band_builder(80., 120., render="gray", raster_dpi=300., **settings)
         images, plates = builder.build_raster()
         dir_, index, pixels, left, top, width, height = images[0]
         self.assertEqual((0, 1), (dir_, index))
         self.assertLess(plates[1]["requested_area_mm2"], plates[1]["linear_area_mm2"])
         rows = top + (np.arange(pixels.shape[0]) + .5) * height / pixels.shape[0]
         lit = rows[pixels.any(axis=1)]
-        # 120度の側（y が小さい側）は開口が途切れ、60度の側は端まで光がある。
+        # 120度の側（y が小さい側）は開口が途切れ、80度の側は端まで光がある。
         self.assertGreater(lit.min(), edge + .1)
-        self.assertLess(lit.max(), self.t.transform(position(60.)).ymm + 2 * builder.cell)
-        self.assertGreater(lit.max(), self.t.transform(position(60.)).ymm - 2 * builder.cell)
+        self.assertLess(lit.max(), self.t.transform(position(80.)).ymm + 2 * builder.cell)
+        self.assertGreater(lit.max(), self.t.transform(position(80.)).ymm - 2 * builder.cell)
 
     def test_render_settings(self):
         self.assertEqual(("holes", 1200.), (self.settings.render, self.settings.raster_dpi))
@@ -393,11 +393,11 @@ class EtchingTests(unittest.TestCase):
                 EtchingSettings.from_properties({f"galaxy.ohp.{key}": value})
 
     def raster_of_uniform_sky(self, render):
-        """一様な空（銀経20〜40度、銀緯±3度）の N0 の画像と集計、内側の画素を返す。"""
+        """一様な空（銀経50〜70度、銀緯±3度）の N0 の画像と集計、内側の画素を返す。"""
         transformer = lens_at_projector()
         builder = EtchingBuilder(transformer, EtchingSettings(cell_mm=.13, flux_gain=.1, render=render,
                                                               raster_dpi=600), 69.25)
-        self.uniform_sky((builder,), 20., -3.)
+        self.uniform_sky((builder,), 50., -3.)
         images, plates = builder.build_raster()
         self.assertEqual([(0, 0)], [image[:2] for image in images])
         _, _, pixels, left, top, width, height = images[0]
@@ -405,9 +405,9 @@ class EtchingTests(unittest.TestCase):
         self.assertEqual((round(height / pixel), round(width / pixel)), pixels.shape)
         x = left + (np.arange(pixels.shape[1]) + .5) * pixel
         y = top + (np.arange(pixels.shape[0]) + .5) * pixel
-        # データの端（銀経20・40度、中央の銀緯±3度。平らな原板では銀緯の端は両端ほど外に広がる）からセル3個分より内側。
-        y_edge = abs(transformer.transform(position(40., 0.)).ymm)
-        x_edge = abs(transformer.transform(position(30., 3.)).xmm)
+        # データの端（銀経50・70度、中央の銀緯±3度。平らな原板では銀緯の端は両端ほど外に広がる）からセル3個分より内側。
+        y_edge = abs(transformer.transform(position(70., 0.)).ymm)
+        x_edge = abs(transformer.transform(position(60., 3.)).xmm)
         margin = 3 * builder.cell
         inner = np.ix_(np.abs(y) < y_edge - margin, np.abs(x) < x_edge - margin)
         return pixels, plates[0], pixels[inner]
@@ -433,8 +433,8 @@ class EtchingTests(unittest.TestCase):
 
     def test_raster_saturation_is_clipped_and_not_spilled(self):
         builder = EtchingBuilder(self.t, EtchingSettings(cell_mm=.2, render="gray", raster_dpi=600), 69.25)
-        builder.add_sample(position(30.05, .05), 1e4)
-        builder.add_sample(position(31.05, .05), .01)
+        builder.add_sample(position(60.05, .05), 1e4)
+        builder.add_sample(position(61.05, .05), .01)
         images, plates = builder.build_raster()
         plate = plates[0]
         self.assertEqual(1., plate["max_open_fraction"])
@@ -447,7 +447,7 @@ class EtchingTests(unittest.TestCase):
         self.assertGreater(pixels[row, col], 200)
         self.assertEqual(pixels.max(), pixels[row - 1:row + 2, col - 1:col + 2].max())
         # 飽和した光は、暗いセルへ移さない。
-        far = builder.transformer.transform(position(31.05, .05))
+        far = builder.transformer.transform(position(61.05, .05))
         row, col = int((far.ymm - top) / pixel), int((far.xmm - left) / pixel)
         self.assertLess(pixels[row, col], 20)
 
@@ -482,7 +482,7 @@ class GaiaInputTests(unittest.TestCase):
             self.assertIn("SUM(POWER(10.0, -0.4", query)
             self.assertIn("COUNT(*)", query)
             self.assertNotIn("TOP", query)
-        self.assertIn("l >= 300 AND l < 360", queries[2])
+        self.assertIn("l >= 0 AND l < 40", queries[2])
 
     def votable(self, status="OK"):
         return ('<VOTABLE xmlns="http://www.ivoa.net/xml/VOTable/v1.3"><RESOURCE>'
@@ -545,7 +545,7 @@ class GaiaInputTests(unittest.TestCase):
 class GaiaCommandTests(unittest.TestCase):
     def config_and_input(self, directory):
         directory = Path(directory)
-        write_cache(directory / "gaia", {0: [(30.05, .05, .01, 1)]})
+        write_cache(directory / "gaia", {0: [(60.05, .05, .01, 1)]})
         config = directory / "galaxy.properties"
         config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\n")
         return config
@@ -590,7 +590,7 @@ class GaiaCommandTests(unittest.TestCase):
 
     def column_config(self, directory, settings):
         directory = Path(directory)
-        write_cache(directory / "gaia", {0: [(30.05, .05, .05, 1)], 3: [(270.05, .05, .05, 1)]})
+        write_cache(directory / "gaia", {0: [(60.05, .05, .05, 1)], 3: [(340.05, .05, .05, 1)]})
         config = directory / "galaxy.properties"
         config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\nplate.row=2\nplate.frame-diameter=22\n"
                           "galaxy.etch.flux-gain=1\n" + settings)
@@ -767,7 +767,7 @@ class GaiaCommandTests(unittest.TestCase):
             # S1 は暗くても黒点・基準点に効くので、S1 を除いて計算すると N0 の画像が変わる。
             sky = {region: [(start + i * .1, -.95 + j * .1, flux * (1 + (i + j) % 5), 1)
                             for i in range(40) for j in range(20)]
-                   for region, start, flux in ((0, 28.05, .05), (3, 268.05, .005))}
+                   for region, start, flux in ((0, 58.05, .05), (3, 338.05, .005))}
             for config in (everything, selected):
                 write_cache(config.parent / "gaia", sky)
             with patch("sys.stdout", new_callable=StringIO) as stdout:
@@ -804,7 +804,7 @@ class GaiaCommandTests(unittest.TestCase):
                     with patch("sys.stdout", new_callable=StringIO):
                         self.assertEqual(0, main(["-svg", "-f", str(config)]))
                     self.assertEqual(pages, sorted(p.name for p in output.iterdir()))
-                    write_cache(Path(directory) / "gaia", {0: [(30.05, .05, .01, 1)]})
+                    write_cache(Path(directory) / "gaia", {0: [(60.05, .05, .01, 1)]})
 
     def test_default_outputs_svg_and_pdf(self):
         with tempfile.TemporaryDirectory() as directory:

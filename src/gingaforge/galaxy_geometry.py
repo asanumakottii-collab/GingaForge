@@ -25,8 +25,8 @@ import math
 from .mathvector import MathVector
 from .models import PlatePosition, SpherePosition
 
-REGIONS = {"N0": (0., 60.), "N1": (60., 120.),
-           "S0": (300., 360.), "S1": (240., 300.)}
+REGIONS = {"N0": (40., 80.), "N1": (80., 120.),
+           "S0": (0., 40.), "S1": (320., 360.)}
 LATITUDE_LIMIT = 20.
 
 
@@ -49,6 +49,8 @@ class GalaxyTransformer:
     LONGITUDE_REGIONS = tuple(REGIONS.values())
     LATITUDE_LIMIT = LATITUDE_LIMIT
     _ANGLE_EPS = 1e-10  # 度。座標回転の丸め誤差を吸収する。
+    # 担当領域の境目。丸め誤差で境目のわずかに手前になった銀経を境目に寄せる。
+    _BOUNDARIES = tuple(sorted({b for region in REGIONS.values() for b in region}))
 
     def __init__(self, radius, sphere, projector_horizontal, projector_vertical, plate, focus):
         """
@@ -91,7 +93,7 @@ class GalaxyTransformer:
     @classmethod
     def _normalize_longitude(cls, longitude):
         longitude %= 360.
-        for boundary in (0., 60., 120., 180., 240., 300., 360.):
+        for boundary in cls._BOUNDARIES:
             if abs(longitude - boundary) <= cls._ANGLE_EPS:
                 return boundary % 360.
         return longitude

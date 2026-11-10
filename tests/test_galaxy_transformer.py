@@ -44,8 +44,8 @@ class GalaxyTransformerTests(unittest.TestCase):
         self.transformer = GalaxyTransformer(0.125, 6500., 355., 200., 50., 19.)
 
     def test_each_region_contains_both_galactic_latitude_signs(self):
-        for longitude, unit in ((30., (0, 0)), (90., (0, 1)),
-                                (330., (1, 0)), (270., (1, 1))):
+        for longitude, unit in ((60., (0, 0)), (100., (0, 1)),
+                                (20., (1, 0)), (340., (1, 1))):
             for latitude in (-19., 0., 19.):
                 with self.subTest(longitude=longitude, latitude=latitude):
                     position = _position(longitude, latitude)
@@ -57,18 +57,18 @@ class GalaxyTransformerTests(unittest.TestCase):
 
     def test_longitude_boundaries_have_one_owner_and_gaps_are_excluded(self):
         for longitude, unit in (
-            (0., (0, 0)), (60. - 1e-6, (0, 0)), (60., (0, 1)),
+            (0., (1, 0)), (40. - 1e-6, (1, 0)), (40., (0, 0)), (40. + 1e-6, (0, 0)),
+            (80. - 1e-6, (0, 0)), (80., (0, 1)),
             (120. - 1e-6, (0, 1)), (120., None), (150., None),
-            (180. - 1e-6, None), (180., None),
-            (240. - 1e-6, None), (240., (1, 1)), (270., (1, 1)),
-            (300. - 1e-6, (1, 1)), (300., (1, 0)), (300. + 1e-6, (1, 0)),
-            (360. - 1e-6, (1, 0)), (360., (0, 0)), (-60., (1, 0)),
+            (180. - 1e-6, None), (180., None), (240., None), (300., None),
+            (320. - 1e-6, None), (320., (1, 1)), (340., (1, 1)),
+            (360. - 1e-6, (1, 1)), (360., (1, 0)), (-40., (1, 1)), (-40. - 1e-6, None),
         ):
             with self.subTest(longitude=longitude):
                 self.assertEqual(unit, self.transformer.assigned_unit(_position(longitude)))
 
     def test_latitude_limits_are_inclusive_and_outside_is_excluded(self):
-        for longitude in (30., 90., 270., 300.):
+        for longitude in (20., 60., 100., 340.):
             for latitude in (-20., 20.):
                 with self.subTest(longitude=longitude, latitude=latitude):
                     self.assertIsNotNone(self.transformer.transform(_position(longitude, latitude)))
@@ -77,7 +77,7 @@ class GalaxyTransformerTests(unittest.TestCase):
                     self.assertIsNone(self.transformer.transform(_position(longitude, latitude)))
 
     def test_each_region_center_projects_to_plate_center_with_projector_offset(self):
-        for longitude in (30., 90., 330., 270.):
+        for longitude in (60., 100., 20., 340.):
             with self.subTest(longitude=longitude):
                 position = self.transformer.transform(_position(longitude))
                 self.assertAlmostEqual(0., position.xmm, places=10)
@@ -98,7 +98,7 @@ class GalaxyTransformerTests(unittest.TestCase):
         transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
         lens = lens_distance(6500. - 50., 19.)
         offset = 50. + lens
-        for center in (30., 90., 330., 270.):
+        for center in (60., 100., 20., 340.):
             self.assertAlmostEqual(lens, transformer.lens_distance(*transformer.unit_of_galactic(center, 0.)), places=12)
             for delta_l, latitude in ((-10., -15.), (10., 15.), (30., 20.)):
                 with self.subTest(center=center, delta_l=delta_l):
@@ -110,16 +110,17 @@ class GalaxyTransformerTests(unittest.TestCase):
                     self.assertAlmostEqual(lens * north / forward, position.xmm, places=10)
                     self.assertAlmostEqual(-lens * east / forward, position.ymm, places=10)
 
-    def test_default_focal_length_gives_about_22_mm_plates(self):
+    def test_default_focal_length_gives_about_14_mm_plates(self):
         transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
         self.assertAlmostEqual(19.0563, transformer.lens_distance(0, 0), places=4)
-        top, bottom = (transformer.transform_unit(_position(l), 0, 0) for l in (0., 60.))
-        side = transformer.transform_unit(_position(30., 20.), 0, 0)
-        corner = transformer.transform_unit(_position(0., 20.), 0, 0)
-        self.assertAlmostEqual(22.28, top.ymm - bottom.ymm, places=2)
+        # N0（銀経40〜80度）。銀経40度幅・銀緯40度幅の正方形の空。
+        top, bottom = (transformer.transform_unit(_position(l), 0, 0) for l in (40., 80.))
+        side = transformer.transform_unit(_position(60., 20.), 0, 0)
+        corner = transformer.transform_unit(_position(40., 20.), 0, 0)
+        self.assertAlmostEqual(14.03, top.ymm - bottom.ymm, places=2)
         # 平らな原板では、銀緯±20度の境界は両端ほど広がる。
         self.assertAlmostEqual(14.03, 2 * side.xmm, places=2)
-        self.assertAlmostEqual(16.23, 2 * corner.xmm, places=2)
+        self.assertAlmostEqual(14.94, 2 * corner.xmm, places=2)
         self.assertLess(math.hypot(corner.xmm, corner.ymm), 15.)  # gaia-ohp の直径30 mmの枠に収まる
 
     def test_scale_shrinks_whole_geometry(self):
@@ -127,7 +128,7 @@ class GalaxyTransformerTests(unittest.TestCase):
             full = GalaxyTransformer(0.125, 6500., horizontal, vertical, 50., 19.)
             scale = .25
             small = GalaxyTransformer(0.125, 6500. * scale, horizontal * scale, vertical * scale, 50. * scale, 19. * scale)
-            for longitude, latitude in ((10., -15.), (95., 18.), (250., 3.), (333., -19.)):
+            for longitude, latitude in ((10., -15.), (95., 18.), (65., 3.), (333., -19.)):
                 with self.subTest(horizontal=horizontal, longitude=longitude):
                     a, b = full.transform(_position(longitude, latitude)), small.transform(_position(longitude, latitude))
                     self.assertAlmostEqual(a.xmm * scale, b.xmm, places=10)
