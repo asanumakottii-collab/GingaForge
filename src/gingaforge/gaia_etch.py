@@ -179,7 +179,8 @@ def _build_column(gaia, etching, transformer, frame_radius, plates):
 def generate(config_path, formats=("svg", "pdf"), download=False):
     """設定ファイルに従ってGaia原盤を formats（"svg" / "pdf" / "pdf-mirrored"）で生成し、出力フォルダを返します。
 
-    "pdf-mirrored" は "pdf" の2ページ目に、裏面印刷用に左右反転した同じ内容を追加する。
+    PDFは全用紙を1ファイル（<設定ファイル名>.pdf）にまとめる。"pdf-mirrored" は各用紙の次のページに、
+    裏面印刷用に左右反転した同じ内容を置く（表1・裏1・表2・裏2…）。
     """
     config_path = Path(config_path).resolve()
     props = load_properties(config_path)
@@ -234,7 +235,7 @@ def main(argv=None, config="gaia-etch.properties", prog=None):
                                help="印刷用PDFのみ出力")
     output_format.add_argument("-mirrored", "--mirrored", dest="formats", action="store_const",
                                const=("svg", "pdf-mirrored"),
-                               help="SVG・PDFを出力し、PDFの2ページ目に裏面印刷用の左右反転を追加")
+                               help="SVG・PDFを出力し、PDFの各ページの次に裏面印刷用の左右反転を追加")
     parser.set_defaults(formats=("svg", "pdf"))
     parser.add_argument("--download-gaia", action="store_true", help="光量マップを取得して生成")
     args = parser.parse_args(argv)

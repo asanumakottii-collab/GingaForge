@@ -605,8 +605,8 @@ class GaiaCommandTests(unittest.TestCase):
             self.assertIn("列2: galaxy.etch.flux-gain = 2", stdout.getvalue())
             output = Path(directory) / "output" / "galaxy" / "inverted"
             # 上から N1・N0・S0・S1 の1組を2列並べ、1用紙に収める。
-            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
-            text = PdfReader(output / "galaxy-0.pdf").pages[0].extract_text()
+            self.assertEqual(["galaxy-0.svg", "galaxy.pdf"], sorted(p.name for p in output.iterdir()))
+            text = PdfReader(output / "galaxy.pdf").pages[0].extract_text()
             for label in ("#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2", "N0 #1", "S1 #2"):
                 self.assertIn(label, text)
             svg = ET.parse(output / "galaxy-0.svg").getroot()
@@ -639,8 +639,8 @@ class GaiaCommandTests(unittest.TestCase):
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
-            self.assertEqual(8, PdfReader(output / "galaxy-0.pdf").pages[0].extract_text().count(" #"))
+            self.assertEqual(["galaxy-0.svg", "galaxy.pdf"], sorted(p.name for p in output.iterdir()))
+            self.assertEqual(8, PdfReader(output / "galaxy.pdf").pages[0].extract_text().count(" #"))
             svg = ET.parse(output / "galaxy-0.svg").getroot()
             namespace = "{http://www.w3.org/2000/svg}"
             texts = [element.text for element in svg.iter(namespace + "text")]
@@ -749,7 +749,7 @@ class GaiaCommandTests(unittest.TestCase):
             images = self.svg_images(svg)
             self.assertEqual(2, len(images))
             self.assertTrue(all(x > 105 and pixels.max() > 0 and pixels.min() == 0 for x, pixels in images))
-            pages = PdfReader(output / "galaxy-0.pdf").pages
+            pages = PdfReader(output / "galaxy.pdf").pages
             self.assertEqual([2, 2], [len(page.images) for page in pages])
 
     def test_normal_color_images_are_black_on_white(self):
@@ -818,7 +818,7 @@ class GaiaCommandTests(unittest.TestCase):
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
+            self.assertEqual(["galaxy-0.svg", "galaxy.pdf"], sorted(p.name for p in output.iterdir()))
 
     def test_mirrored_outputs_svg_and_pdf_too(self):
         from pypdf import PdfReader
@@ -827,8 +827,8 @@ class GaiaCommandTests(unittest.TestCase):
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-mirrored", "-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
-            self.assertEqual(2, len(PdfReader(output / "galaxy-0.pdf").pages))
+            self.assertEqual(["galaxy-0.svg", "galaxy.pdf"], sorted(p.name for p in output.iterdir()))
+            self.assertEqual(2, len(PdfReader(output / "galaxy.pdf").pages))
 
 
 class BundledConfigTests(unittest.TestCase):

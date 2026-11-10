@@ -47,8 +47,8 @@ flowchart TD
 
 | コマンド | 用途 | 設定ファイル | 出力（同梱設定） |
 |---|---|---|---|
-| `gaia-etch` | 金属エッチング | `gaia-etch.properties` | `output/gaia-etch/inverted/gaia-etch-*.svg`・`.pdf` |
-| `gaia-ohp` | OHPフィルム印刷 | `gaia-ohp.properties` | `output/gaia-ohp/inverted/gaia-ohp-*.svg`・`.pdf` |
+| `gaia-etch` | 金属エッチング | `gaia-etch.properties` | `output/gaia-etch/inverted/gaia-etch.pdf`・`gaia-etch-*.svg` |
+| `gaia-ohp` | OHPフィルム印刷 | `gaia-ohp.properties` | `output/gaia-ohp/inverted/gaia-ohp.pdf`・`gaia-ohp-*.svg` |
 
 `gingaforge gaia-ohp` は `gingaforge gaia-etch -f gaia-ohp.properties` と同じです。
 `gingaforge` コマンドは `python -m gingaforge` でも実行できます。
@@ -73,7 +73,7 @@ flowchart TD
 |---|---|
 | `-f <設定ファイル>` | 別の設定ファイルを使う（相対パスは実行時のフォルダが基準） |
 | `-svg` / `-pdf` | SVGのみ / PDFのみ出力。省略時は両方 |
-| `-mirrored` | SVG・PDFを出力し、PDFの2ページ目に裏面印刷用の左右反転を追加 |
+| `-mirrored` | SVG・PDFを出力し、PDFの各ページの次に裏面印刷用の左右反転を追加（表1・裏1・表2・裏2…） |
 | `--download-gaia` | Gaiaの光量を取得してから生成 |
 
 `-svg`・`-pdf`・`-mirrored` は同時に指定できません。一覧は `gingaforge <コマンド> --help` で表示します。
@@ -145,7 +145,8 @@ output/
   gaia-ohp/inverted/        gaia-ohp.properties の出力（color.invert = yes）
 ```
 
-ファイル名は `<設定ファイル名>-<用紙番号>.svg`・`.pdf` です。`-mirrored` でも別のファイルは作らず、同じPDFの2ページ目に左右反転を追加します。
+PDFは全用紙を1つのファイル `<設定ファイル名>.pdf` に、用紙の順にページとして入れます。SVGは1ファイル1用紙で、`<設定ファイル名>-<用紙番号>.svg` です。
+`-mirrored` では、各用紙の次のページにその左右反転を置きます（表1・裏1・表2・裏2…）。両面印刷すると、各用紙の裏にその反転が来ます。
 
 設定ごとにフォルダが分かれるため、ある設定の生成が別の設定の原盤を上書きすることはありません。
 既存の原盤を残したまま試す場合は、設定ファイルを同じフォルダに別名でコピーして指定します。
@@ -173,7 +174,7 @@ from gingaforge.gaia_etch import generate
 generate("gaia-ohp.properties", formats=("svg", "pdf-mirrored"))
 ```
 
-`formats` には `"svg"`・`"pdf"`・`"pdf-mirrored"` を指定します。`"pdf-mirrored"` は `"pdf"` と同じファイルに2ページ目を加えるものなので、`"pdf"` と一緒には指定しません。
+`formats` には `"svg"`・`"pdf"`・`"pdf-mirrored"` を指定します。`"pdf-mirrored"` は `"pdf"` と同じファイルに裏面のページを加えるものなので、`"pdf"` と一緒には指定しません。
 `download=True` で `--download-gaia` と同じ動作になります。
 
 ## コードの構成

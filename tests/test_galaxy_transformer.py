@@ -290,8 +290,8 @@ class GalaxyOutputTests(unittest.TestCase):
             with _init_plate_writer({}, Path(directory, "gaia-etch.properties"), pdf=True, mirrored=True) as writer:
                 writer.write_hole(0, 0, 10., 0., .5)
             folder = Path(directory, "output", "gaia-etch", "normal")
-            self.assertEqual(["gaia-etch-0.pdf"], [p.name for p in folder.glob("*.pdf")])
-            normal, mirrored = PdfReader(folder / "gaia-etch-0.pdf").pages
+            self.assertEqual(["gaia-etch.pdf"], [p.name for p in folder.glob("*.pdf")])
+            normal, mirrored = PdfReader(folder / "gaia-etch.pdf").pages
             self.assertEqual(["N1", "N0", "S0", "S1"], normal.extract_text().split())
             front = normal.get_contents().get_data().decode()
             back = mirrored.get_contents().get_data().decode()
@@ -302,6 +302,34 @@ class GalaxyOutputTests(unittest.TestCase):
             self.assertNotIn("-1 0 0 1", front)
             self.assertIn(draw, back)
             self.assertLess(back.index(flip.group()), back.index(draw))
+
+    @unittest.skipUnless(importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
+                         "ReportLab and pypdf are required for PDF tests")
+    def test_pdf_puts_all_sheets_in_one_file_and_mirrored_pairs_each_sheet(self):
+        from pypdf import PdfReader
+
+        props = {"plate.select": "N1, N0, S0", "plate.per-column": "2", "plate.frame-diameter": "40"}
+        for mirrored, expected in ((False, [["N1", "N0"], ["S0"]]),
+                                   (True, [["N1", "N0"], ["N1", "N0"], ["S0"], ["S0"]])):
+            with self.subTest(mirrored=mirrored), tempfile.TemporaryDirectory() as directory:
+                with _init_plate_writer(props, Path(directory, "gaia-etch.properties"), pdf=True,
+                                        mirrored=mirrored) as writer:
+                    # 用紙をまたいで、後の用紙から先に描いても、ページは用紙の順。
+                    writer.write_hole(1, 0, 0., 0., .5)
+                    writer.write_hole(0, 1, 0., 0., .5)
+                folder = Path(directory, "output", "gaia-etch", "normal")
+                self.assertEqual(["gaia-etch.pdf"], [p.name for p in folder.iterdir()])
+                pages = PdfReader(folder / "gaia-etch.pdf").pages
+                self.assertEqual(expected, [page.extract_text().split() for page in pages])
+                if mirrored:
+                    # 偶数ページ（裏）だけが左右反転で、直前の表と同じ描画内容を呼び出す。
+                    contents = [page.get_contents().get_data().decode() for page in pages]
+                    for front, back in zip(contents[::2], contents[1::2]):
+                        self.assertNotIn("-1 0 0 1", front)
+                        self.assertIn("-1 0 0 1", back)
+                        self.assertEqual(re.search(r"/\S+ Do", front).group(), re.search(r"/\S+ Do", back).group())
+                    self.assertNotEqual(re.search(r"/\S+ Do", contents[0]).group(),
+                                        re.search(r"/\S+ Do", contents[2]).group())
 
 
 if __name__ == "__main__":

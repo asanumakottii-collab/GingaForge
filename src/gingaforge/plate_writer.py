@@ -166,19 +166,32 @@ class _PlateWriterBase:
 
 
 class PlateWriterPDF(_PlateWriterBase):
-    """ISO A4（210 x 297 mm）のPDFをベクトルで書き出します。"""
+    """ISO A4（210 x 297 mm）のPDFをベクトルで書き出します。全用紙を1つのPDFに、用紙の順にページとして入れます。
 
-    PLATE_FORM = "plate"  # mirrored で、両ページが共有する描画内容の名前
+    穴・画像は用紙をまたいで任意の順に届くため、用紙ごとに描画の命令を記録し、閉じるときに順に描く。
+    """
 
     def __init__(self, *args, mirrored=False, **kwargs):
-        """mirrored: Trueなら2ページ目に、裏面印刷用に文字も含めて左右反転した同じ内容を追加する。"""
+        """mirrored: Trueなら各用紙の直後のページに、裏面印刷用に文字も含めて左右反転した同じ内容を置く。
+
+        ページは 表1・裏1・表2・裏2… の順になり、両面印刷すると各用紙の裏にその反転が来る。
+        """
         from reportlab.lib.units import mm
-        from reportlab.pdfgen.canvas import Canvas
 
         super().__init__(*args, **kwargs)
         self._mm = mm
-        self._canvas_class = Canvas
         self.mirrored = mirrored
+
+    @property
+    def path(self):
+        """出力するPDFのパス（``<設定ファイル名>.pdf``）。"""
+        return self._output_path(None, "pdf")
+
+    def _output_path(self, page, extension):
+        if page is not None:
+            return super()._output_path(page, extension)
+        os.makedirs(self.output_dir, exist_ok=True)
+        return os.path.join(self.output_dir, f"{self.filename_prefix.removesuffix('-')}.{extension}")
 
     def _x(self, value):
         """mm単位のx座標をPDFのpoint単位に変換します。"""
@@ -189,76 +202,92 @@ class PlateWriterPDF(_PlateWriterBase):
         return (self.HEIGHT - value) * self._mm
 
     def _open_page(self, page):
-        out = self._canvas_class(
-            self._output_path(page, "pdf"),
-            pagesize=(self._x(self.WIDTH), self._x(self.HEIGHT)),
-            pageCompression=1,
-            invariant=1,
-        )
-        if self.mirrored:
-            out.beginForm(self.PLATE_FORM)
-        return out
-
-    def _finish_pages(self, out):
-        """描画を終えた用紙のページを確定します。mirrored では同じ内容を2ページに置きます。"""
-        if self.mirrored:
-            out.endForm()
-            out.doForm(self.PLATE_FORM)
-            out.showPage()
-            out.translate(self._x(self.WIDTH), 0)
-            out.scale(-1, 1)
-            out.doForm(self.PLATE_FORM)
-        out.showPage()
+        """用紙の描画命令（canvas を受け取る関数）のリスト。"""
+        return []
 
     def _draw_text(self, out, cx, y, text, size):
-        out.setFillGray(0)
-        out.setFont("Helvetica", self._x(size))
-        out.drawCentredString(self._x(cx), self._y(y), text)
+        def draw(canvas):
+            canvas.setFillGray(0)
+            canvas.setFont("Helvetica", self._x(size))
+            canvas.drawCentredString(self._x(cx), self._y(y), text)
+        out.append(draw)
 
     def _draw_frame(self, out, cx, cy, label):
         self._draw_text(out, cx, cy - self.r, label, self.LABEL_SIZE)
-        out.setLineWidth(self._x(0.1))
-        out.setStrokeGray(0)
-        out.setFillGray(0)
-        stroke, fill = (0, 1) if self.invert_color else (1, 0)
-        out.circle(self._x(cx), self._y(cy), self._x(self.r), stroke=stroke, fill=fill)
+
+        def draw(canvas):
+            canvas.setLineWidth(self._x(0.1))
+            canvas.setStrokeGray(0)
+            canvas.setFillGray(0)
+            stroke, fill = (0, 1) if self.invert_color else (1, 0)
+            canvas.circle(self._x(cx), self._y(cy), self._x(self.r), stroke=stroke, fill=fill)
+        out.append(draw)
 
     def _draw_hole(self, out, x, y, r):
-        out.setFillGray(1 if self.invert_color else 0)
-        out.circle(self._x(x), self._y(y), self._x(r), stroke=0, fill=1)
+        def draw(canvas):
+            canvas.setFillGray(1 if self.invert_color else 0)
+            canvas.circle(self._x(x), self._y(y), self._x(r), stroke=0, fill=1)
+        out.append(draw)
 
     def _draw_image(self, out, cx, cy, image, x, y, width, height):
-        from reportlab.lib.utils import ImageReader
+        def draw(canvas):
+            from reportlab.lib.utils import ImageReader
 
-        out.saveState()
-        frame = out.beginPath()
-        frame.circle(self._x(cx), self._y(cy), self._x(self.r))
-        out.clipPath(frame, stroke=0, fill=0)
-        # DeviceGray・補間なしで埋め込むため、画素がそのままプリンターの点に対応する。
-        out.drawImage(ImageReader(image), self._x(x), self._y(y + height), self._x(width), self._x(height))
-        out.restoreState()
+            canvas.saveState()
+            frame = canvas.beginPath()
+            frame.circle(self._x(cx), self._y(cy), self._x(self.r))
+            canvas.clipPath(frame, stroke=0, fill=0)
+            # DeviceGray・補間なしで埋め込むため、画素がそのままプリンターの点に対応する。
+            canvas.drawImage(ImageReader(image), self._x(x), self._y(y + height), self._x(width), self._x(height))
+            canvas.restoreState()
+        out.append(draw)
+
+    def _render(self, destination):
+        """記録した全用紙を、用紙の順に1つのPDFのページにしたデータを返します。"""
+        from reportlab.pdfgen.canvas import Canvas
+
+        canvas = Canvas(destination, pagesize=(self._x(self.WIDTH), self._x(self.HEIGHT)),
+                        pageCompression=1, invariant=1)
+        for page in sorted(self.outs):
+            if self.mirrored:
+                # 表と裏で同じ描画内容を共有し、裏だけ x → 用紙幅 - x で左右反転する。
+                form = f"plate{page}"
+                canvas.beginForm(form)
+                for draw in self.outs[page]:
+                    draw(canvas)
+                canvas.endForm()
+                canvas.doForm(form)
+                canvas.showPage()
+                canvas.translate(self._x(self.WIDTH), 0)
+                canvas.scale(-1, 1)
+                canvas.doForm(form)
+            else:
+                for draw in self.outs[page]:
+                    draw(canvas)
+            canvas.showPage()
+        return canvas.getpdfdata()
 
     def close(self):
-        for index, out in self.outs.items():
-            destination = self._output_path(index, "pdf")
-            temporary = None
-            try:
-                # 既存ファイルへの直接書き込みは同期ストレージ等でタイムアウト
-                # することがある。同じディレクトリに完成させてから原子的に置換。
-                with tempfile.NamedTemporaryFile(
-                        mode="wb", dir=os.path.dirname(os.path.abspath(destination)),
-                        prefix=".otl-pdf-", suffix=".tmp", delete=False) as stream:
-                    temporary = stream.name
-                    self._finish_pages(out)
-                    stream.write(out.getpdfdata())
-                os.replace(temporary, destination)
-            except OSError as exc:
-                raise OSError(
-                    exc.errno, f"PDFの保存に失敗しました: {exc.strerror}", destination
-                ) from exc
-            finally:
-                if temporary is not None and os.path.exists(temporary):
-                    os.unlink(temporary)
+        if not self.outs:
+            return
+        destination = self.path
+        temporary = None
+        try:
+            # 既存ファイルへの直接書き込みは同期ストレージ等でタイムアウト
+            # することがある。同じディレクトリに完成させてから原子的に置換。
+            with tempfile.NamedTemporaryFile(
+                    mode="wb", dir=os.path.dirname(os.path.abspath(destination)),
+                    prefix=".otl-pdf-", suffix=".tmp", delete=False) as stream:
+                temporary = stream.name
+                stream.write(self._render(destination))
+            os.replace(temporary, destination)
+        except OSError as exc:
+            raise OSError(
+                exc.errno, f"PDFの保存に失敗しました: {exc.strerror}", destination
+            ) from exc
+        finally:
+            if temporary is not None and os.path.exists(temporary):
+                os.unlink(temporary)
         self.outs = {}
 
 
