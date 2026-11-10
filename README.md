@@ -103,7 +103,7 @@ flowchart LR
 | S1 | 320度以上360度未満 | N0 | 40度以上80度未満 |
 | S0 | 0度以上40度未満 | N1 | 80度以上120度未満 |
 
-作る原盤は設定ファイルの `plate.select` で選びます（同梱の設定は `N0, N1`）。
+作る原盤と、用紙に上から並べる順は設定ファイルの `plate.select` で決めます（同梱の `gaia-ohp` は `N1, N0, S0`）。
 
 恒星原盤は別プロジェクトの[OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library)が担当します。
 

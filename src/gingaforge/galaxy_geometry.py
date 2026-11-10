@@ -27,6 +27,8 @@ from .models import PlatePosition, SpherePosition
 
 REGIONS = {"N0": (40., 80.), "N1": (80., 120.),
            "S0": (0., 40.), "S1": (320., 360.)}
+# 空でつながる順（銀経120度の側から）。plate.select を省略したときに、用紙の上からこの順に並べる。
+SKY_ORDER = ("N1", "N0", "S0", "S1")
 LATITUDE_LIMIT = 20.
 
 

@@ -41,7 +41,7 @@ class PlatePosition:
     def __init__(self):
         self.xmm = 0.0
         self.ymm = 0.0
-        self.dir = 0  # 用紙上段(0)，下段(1)の別
+        self.dir = 0  # 原盤の名前のN(0)・S(1)
         self.index = 0  # ユニット番号
 
 

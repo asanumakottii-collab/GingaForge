@@ -2,8 +2,8 @@
 """Gaia DR3のG帯光量からエッチング・OHP印刷用の天の川原盤を生成する。既定でSVGとPDFの両方を出力する。
 
 ``render`` で、円形の穴（holes）か、開口率の階調（gray）・点描（dither）の画像かを選ぶ。
-``column.count`` を2以上にすると、列ごとに設定を変えた原盤一式を用紙に左から並べる。
-``row.count`` を2以上にすると、その全列を同じ内容で用紙に上から並べる。
+``plate.select`` の原盤を、各列に上から順に並べる。``column.count`` を2以上にすると、
+列ごとに設定を変えた原盤一式を用紙に左から並べる。
 """
 
 import argparse
@@ -14,7 +14,7 @@ import sys
 from .config import PROJECT_ROOT, load_properties, output_directory, positive_number
 from .gaia_catalog import GaiaSettings, download_gaia, iter_flux_bins
 from .galaxy_etching import EtchingBuilder, EtchingSettings
-from .galaxy_geometry import REGIONS, GalaxyTransformer
+from .galaxy_geometry import REGIONS, SKY_ORDER, GalaxyTransformer
 from .plate_writer import PlateWriterPDF, PlateWriterSVG
 
 
@@ -33,36 +33,54 @@ def _init_galaxy_transformer(props):
     return GalaxyTransformer(radius, sphere * scale, horizontal * scale, vertical * scale, plate * scale, focus * scale)
 
 
-def _selected_plates(props):
-    """``plate.select`` の原盤を ``(出力位置, 番号)`` の集合で返す。省略時は全原盤。"""
+# 廃止した配置の設定と、代わりの設定。
+_REMOVED_KEYS = {
+    "plate.column": "原盤は各列に1枚ずつ縦に並べます。plate.select の順と plate.per-column で配置してください。",
+    "plate.row": "1列に縦に並べる枚数は plate.per-column で指定してください。",
+    "row.count": "同じ原盤の並びを繰り返すには plate.repeat を使ってください。",
+}
+
+
+def _check_removed_keys(props):
+    for key, hint in _REMOVED_KEYS.items():
+        if key in props:
+            raise ValueError(f"{key} は廃止しました。{hint}")
+
+
+def _plate_order(props):
+    """``plate.select`` の原盤を、1列に上から並べる順の ``(出力位置, 番号)`` のリストで返す。
+
+    省略時は全原盤を空でつながる順（銀経120度の側から）に並べる。
+    """
     names = list(REGIONS)
-    selected = [name.strip() for name in props.get("plate.select", ",".join(names)).split(",")]
+    selected = [name.strip() for name in props.get("plate.select", ", ".join(SKY_ORDER)).split(",")]
     if not set(selected) <= set(names):
         raise ValueError(f"plate.select: 原盤は {', '.join(names)} からカンマ区切りで指定してください。")
-    return {divmod(names.index(name), 2) for name in selected}
+    if len(set(selected)) != len(selected):
+        raise ValueError("plate.select: 同じ原盤を2回指定しています。繰り返すには plate.repeat を使ってください。")
+    return [divmod(names.index(name), 2) for name in selected]
 
 
-def _row_count(props):
-    """``row.count`` を返す。2行目以降は1行目のコピーなので、行ごとの設定はない。"""
+def _count(props, key, default, minimum):
+    """``key`` の整数を返す。"""
     try:
-        count = int(props.get("row.count", 1))
+        count = int(props.get(key, default))
     except ValueError as exc:
-        raise ValueError("row.count: 1以上の整数を指定してください。") from exc
-    if count < 1:
-        raise ValueError("row.count: 1以上の整数を指定してください。")
+        raise ValueError(f"{key}: {minimum}以上の整数を指定してください。") from exc
+    if count < minimum:
+        raise ValueError(f"{key}: {minimum}以上の整数を指定してください。")
     return count
 
 
 def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mirrored=False):
-    column = int(props.get("plate.column", 1))
-    row = int(props.get("plate.row", 1))
+    _check_removed_keys(props)
     # plate.frame-diameter は円形枠の直径。0 または省略時は自動計算。
     frame_diameter = positive_number(props, "plate.frame-diameter", 0., allow_zero=True)
     invert_color = props.get("color.invert", "no").strip().lower() in {"y", "yes", "true"}
     # output/<設定ファイル名>/ の下で、白地に黒穴（normal）と黒地に白穴（inverted）を分ける。
     output_dir = output_directory(config_path, "inverted" if invert_color else "normal")
-    args = (column, row, frame_diameter / 2, f"{Path(config_path).stem}-", invert_color, output_dir, column_headings,
-            _selected_plates(props), _row_count(props))
+    args = (frame_diameter / 2, f"{Path(config_path).stem}-", invert_color, output_dir, _plate_order(props),
+            column_headings, _count(props, "plate.per-column", 0, 0), _count(props, "plate.repeat", 1, 1))
     if mirrored:
         return PlateWriterPDF(*args, mirrored=True)
     return PlateWriterPDF(*args) if pdf else PlateWriterSVG(*args)
@@ -71,7 +89,7 @@ def _init_plate_writer(props, config_path, pdf=False, column_headings=((),), mir
 def _column_properties(props):
     """列ごとの ``(列で変えた設定, 列の設定)`` を左の列から返す。
 
-    ``column.<列番号>.<キー> = 値`` は、その列だけ ``<キー>`` の値を変える。用紙の配置（行の数を含む）と白黒は全列共通。
+    ``column.<列番号>.<キー> = 値`` は、その列だけ ``<キー>`` の値を変える。用紙の配置（plate.*）と白黒は全列共通。
     """
     try:
         count = int(props.get("column.count", 1))
@@ -88,8 +106,8 @@ def _column_properties(props):
             raise ValueError(f"{key}: column.<列番号>.<キー> の形で書いてください。")
         if not 1 <= int(number) <= count:
             raise ValueError(f"{key}: 列番号は1〜{count}（column.count）にしてください。")
-        if name.startswith(("plate.", "column.", "row.")) or name == "color.invert":
-            raise ValueError(f"{key}: 用紙の配置・白黒（plate.*、row.count、color.invert）は全列共通です。")
+        if name.startswith(("plate.", "column.")) or name == "color.invert":
+            raise ValueError(f"{key}: 用紙の配置・白黒（plate.*、color.invert）は全列共通です。")
         # 打ち間違えたキーが、列の見出しに書かれるだけで無視されないように。
         if name not in props:
             raise ValueError(f"{key}: 列で変える {name} は、列の指定なしでもこのファイルに書いてください。")
@@ -167,7 +185,8 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
     props = load_properties(config_path)
     directory = config_path.parent
     # 時間のかかる集計の前に、全列の設定を確かめる。
-    plates = _selected_plates(props)
+    _check_removed_keys(props)
+    plates = set(_plate_order(props))
     columns = []
     for number, (change, column_props) in enumerate(_column_properties(props), 1):
         try:
@@ -195,7 +214,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
         results.append(_build_column(gaia, etching, transformer, writers[0].r, plates))
     for writer in writers:
         with writer:
-            writer.write_frames(2)
+            writer.write_frames()
             for column, (holes, radius, images) in enumerate(results):
                 for dir_, index, x, y in holes:
                     writer.write_hole(dir_, index, x, y, radius, column)

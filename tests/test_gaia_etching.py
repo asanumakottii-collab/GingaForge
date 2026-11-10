@@ -558,7 +558,7 @@ class GaiaCommandTests(unittest.TestCase):
                 self.assertEqual(0, main(["-svg", "-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
             pages = sorted(output.glob("*.svg"))
-            self.assertEqual(2, len(pages))
+            self.assertEqual(1, len(pages))
             self.assertEqual(pages, sorted(output.iterdir()))
             holes = [c for c in ET.parse(pages[0]).getroot().findall("{http://www.w3.org/2000/svg}circle")
                      if not c.get("stroke")]
@@ -584,15 +584,15 @@ class GaiaCommandTests(unittest.TestCase):
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-PDF", "-f", str(config)]))
             pages = sorted((Path(directory) / "output" / "galaxy" / "inverted").glob("*.pdf"))
-            self.assertEqual(2, len(pages))
-            self.assertEqual(["N0", "S0"], PdfReader(pages[0]).pages[0].extract_text().split())
+            self.assertEqual(1, len(pages))
+            self.assertEqual(["N1", "N0", "S0", "S1"], PdfReader(pages[0]).pages[0].extract_text().split())
             self.assertEqual(pages, sorted((Path(directory) / "output" / "galaxy" / "inverted").iterdir()))
 
     def column_config(self, directory, settings):
         directory = Path(directory)
         write_cache(directory / "gaia", {0: [(60.05, .05, .05, 1)], 3: [(340.05, .05, .05, 1)]})
         config = directory / "galaxy.properties"
-        config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\nplate.row=2\nplate.frame-diameter=22\n"
+        config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\nplate.frame-diameter=22\n"
                           "galaxy.etch.flux-gain=1\n" + settings)
         return config
 
@@ -604,7 +604,7 @@ class GaiaCommandTests(unittest.TestCase):
                 self.assertEqual(0, main(["-f", str(config)]))
             self.assertIn("列2: galaxy.etch.flux-gain = 2", stdout.getvalue())
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            # 上段 N0・N1、下段 S0・S1 の1組を2列並べ、1用紙に収める。
+            # 上から N1・N0・S0・S1 の1組を2列並べ、1用紙に収める。
             self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
             text = PdfReader(output / "galaxy-0.pdf").pages[0].extract_text()
             for label in ("#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2", "N0 #1", "S1 #2"):
@@ -629,12 +629,12 @@ class GaiaCommandTests(unittest.TestCase):
             pages = [config.parent / "output" / "galaxy" / "inverted" / "galaxy-0.svg" for config in (plain, counted)]
             self.assertEqual(pages[0].read_text(), pages[1].read_text())
             texts = [e.text for e in ET.parse(pages[0]).getroot().iter("{http://www.w3.org/2000/svg}text")]
-            self.assertEqual(["N0", "S0", "N1", "S1"], texts)
+            self.assertEqual(["N1", "N0", "S0", "S1"], texts)
 
     def test_rows_copy_all_columns(self):
         from pypdf import PdfReader
         with tempfile.TemporaryDirectory() as directory:
-            config = self.column_config(directory, "column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\nrow.count=2\n"
+            config = self.column_config(directory, "column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\nplate.repeat=2\n"
                                                    "plate.select=N0,N1\n")
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-f", str(config)]))
@@ -644,11 +644,11 @@ class GaiaCommandTests(unittest.TestCase):
             svg = ET.parse(output / "galaxy-0.svg").getroot()
             namespace = "{http://www.w3.org/2000/svg}"
             texts = [element.text for element in svg.iter(namespace + "text")]
-            # 見出しは用紙の上に1回。原盤名は2列×2行×2枚。
+            # 見出しは用紙の上に1回。原盤名は2列×2回×2枚。
             self.assertEqual(["#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2"], texts[:4])
             self.assertEqual(sorted([f"{name} #{column}" for name in ("N0", "N1") for column in (1, 2)] * 2),
                              sorted(texts[4:]))
-            # 上半分の1行目を148.5 mm下へずらすと、下半分の2行目に一致する。
+            # 上半分の1回目を148.5 mm下へずらすと、下半分の2回目に一致する。
             circles = [(float(c.attrib["cx"][:-2]), float(c.attrib["cy"][:-2]), c.attrib["r"])
                        for c in svg.iter(namespace + "circle")]
             first = sorted((x, round(y, 6), r) for x, y, r in circles if y < 148.5)
@@ -658,7 +658,7 @@ class GaiaCommandTests(unittest.TestCase):
 
     def test_rows_of_images_are_copies(self):
         with tempfile.TemporaryDirectory() as directory:
-            config = self.column_config(directory, "galaxy.etch.render=gray\nrow.count=2\nplate.select=N0,S1\n")
+            config = self.column_config(directory, "galaxy.etch.render=gray\nplate.repeat=2\nplate.select=N0,S1\n")
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-svg", "-f", str(config)]))
             svg = Path(directory) / "output" / "galaxy" / "inverted" / "galaxy-0.svg"
@@ -668,14 +668,14 @@ class GaiaCommandTests(unittest.TestCase):
             np.testing.assert_array_equal(images[2][1], images[3][1])
             namespace = "{http://www.w3.org/2000/svg}"
             texts = [e for e in ET.parse(svg).getroot().iter(namespace + "text")]
-            # 両方の段がある2行は、上から N・S・N・S の段になる。
+            # 選んだ順を2回繰り返す。
             positions = sorted((float(e.attrib["y"][:-2]), e.text) for e in texts)
             self.assertEqual(["N0", "S1", "N0", "S1"], [text for _, text in positions])
 
     def test_one_row_output_is_unchanged(self):
         with tempfile.TemporaryDirectory() as directory:
             plain, counted = (self.column_config(Path(directory) / name, "plate.select=N0,N1\n" + settings)
-                              for name, settings in (("plain", ""), ("counted", "row.count=1\n")))
+                              for name, settings in (("plain", ""), ("counted", "plate.repeat=1\n")))
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-svg", "-f", str(plain)]))
                 self.assertEqual(0, main(["-svg", "-f", str(counted)]))
@@ -692,13 +692,18 @@ class GaiaCommandTests(unittest.TestCase):
             ("column.count=2\ncolumn.2.plate.frame-diameter=10\n", "全列共通"),
             ("column.count=2\ncolumn.2.color.invert=no\n", "全列共通"),
             ("column.count=2\ncolumn.2.plate.select=N0\n", "全列共通"),
-            ("row.count=2\ncolumn.count=2\ncolumn.2.row.count=1\n", "全列共通"),
-            ("row.count=0\n", "row.count"),
-            ("row.count=two\n", "row.count"),
-            # 全原盤を2行にすると、1段の高さが74.25 mmで、plate.row=2 の原盤は37.125 mmまで。
-            ("row.count=2\nplate.frame-diameter=40\n", "plate.frame-diameter"),
+            ("plate.repeat=2\ncolumn.count=2\ncolumn.2.plate.repeat=1\n", "全列共通"),
+            ("plate.repeat=0\n", "plate.repeat"),
+            ("plate.repeat=two\n", "plate.repeat"),
+            ("plate.per-column=-1\n", "plate.per-column"),
+            # 全原盤を2回繰り返すと1列に8枚で、1枚は 297 / 8 = 37.125 mmまで。
+            ("plate.repeat=2\nplate.frame-diameter=40\n", "plate.frame-diameter"),
             ("plate.select=N0,X1\n", "plate.select"),
             ("plate.select=\n", "plate.select"),
+            ("plate.select=N0,N0\n", "2回"),
+            ("plate.row=2\n", "plate.row は廃止"),
+            ("plate.column=1\n", "plate.column は廃止"),
+            ("row.count=2\n", "row.count は廃止"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=2\ncolumn.02.galaxy.etch.flux-gain=3\n", "重複"),
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=-1\n", "列2: galaxy.etch.flux-gain"),
             ("column.count=2\ngalaxy.gaia.faint-limit=17\ncolumn.2.galaxy.gaia.faint-limit=16\n",
@@ -706,7 +711,7 @@ class GaiaCommandTests(unittest.TestCase):
             # 原盤が列の幅（210 mm ÷ 列の数）に収まらない。
             ("column.count=10\n", "plate.frame-diameter"),
             ("column.count=4\nplate.frame-diameter=60\n", "plate.frame-diameter"),
-            # 原盤は収まるが、列の見出しが最上段の原盤名と重なる。
+            # 原盤は収まるが、列の見出しが一番上の原盤名と重なる。
             ("column.count=2\nplate.frame-diameter=60\ncolumn.2.galaxy.etch.flux-gain=2\n", "列の見出し"),
         )
         for settings, message in cases:
@@ -782,29 +787,30 @@ class GaiaCommandTests(unittest.TestCase):
             roots = [ET.parse(page).getroot() for page in pages]
             self.assertEqual(["N0", "N1"], [e.text for e in roots[1].iter(namespace + "text")])
             frames = [[c.attrib for c in root.iter(namespace + "circle") if c.get("stroke")] for root in roots]
-            self.assertEqual(2, len(frames[1]))
-            self.assertEqual(frames[0][::2], frames[1])
+            self.assertEqual([4, 2], [len(f) for f in frames])
             # 全原盤の N0 の画像と、S1 の光を含めて決めた黒点・基準点も含めて同じ。
             images = [self.svg_images(page) for page in pages]
             self.assertEqual(1, len(images[1]))
             self.assertTrue(np.array_equal(images[0][0][1], images[1][0][1]))
 
-    def test_page_without_selected_plates_is_not_written(self):
+    def test_per_column_splits_pages_in_select_order(self):
         with tempfile.TemporaryDirectory() as directory:
             config = self.config_and_input(directory)
-            for name, pages in (("N1", ["galaxy-1.svg"]), ("N0", ["galaxy-0.svg"]), ("S0, N0", ["galaxy-0.svg"])):
-                with self.subTest(name=name):
-                    config.write_text(config.read_text().split("plate.select")[0] + f"plate.select={name}\n")
+            write_cache(Path(directory) / "gaia", {0: [(60.05, .05, .01, 1)], 2: [(20.05, .05, .01, 1)]})
+            for settings, pages in (("plate.select=N1,N0,S0\nplate.per-column=2\n", [["N1", "N0"], ["S0"]]),
+                                    ("plate.select=S0\nplate.per-column=1\n", [["S0"]]),
+                                    ("plate.select=N0,S0\n", [["N0", "S0"]])):
+                with self.subTest(settings=settings):
+                    config.write_text("galaxy.gaia.input=gaia\ncolor.invert=yes\n" + settings)
                     output = Path(directory) / "output" / "galaxy" / "inverted"
                     for page in output.glob("*"):
                         page.unlink()
-                    # N1 に光がなくても、穴の検査を通るように一様な光を置く。
-                    if name == "N1":
-                        write_cache(Path(directory) / "gaia", {1: [(90.05, .05, .01, 1)]})
                     with patch("sys.stdout", new_callable=StringIO):
                         self.assertEqual(0, main(["-svg", "-f", str(config)]))
-                    self.assertEqual(pages, sorted(p.name for p in output.iterdir()))
-                    write_cache(Path(directory) / "gaia", {0: [(60.05, .05, .01, 1)]})
+                    found = sorted(output.iterdir())
+                    self.assertEqual([f"galaxy-{i}.svg" for i in range(len(pages))], [p.name for p in found])
+                    self.assertEqual(pages, [[e.text for e in ET.parse(p).getroot().iter("{http://www.w3.org/2000/svg}text")]
+                                             for p in found])
 
     def test_default_outputs_svg_and_pdf(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -812,8 +818,7 @@ class GaiaCommandTests(unittest.TestCase):
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg", "galaxy-1.pdf", "galaxy-1.svg"],
-                             sorted(p.name for p in output.iterdir()))
+            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
 
     def test_mirrored_outputs_svg_and_pdf_too(self):
         from pypdf import PdfReader
@@ -822,10 +827,8 @@ class GaiaCommandTests(unittest.TestCase):
             with patch("sys.stdout", new_callable=StringIO):
                 self.assertEqual(0, main(["-mirrored", "-f", str(config)]))
             output = Path(directory) / "output" / "galaxy" / "inverted"
-            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg", "galaxy-1.pdf", "galaxy-1.svg"],
-                             sorted(p.name for p in output.iterdir()))
-            for name in ("galaxy-0.pdf", "galaxy-1.pdf"):
-                self.assertEqual(2, len(PdfReader(output / name).pages))
+            self.assertEqual(["galaxy-0.pdf", "galaxy-0.svg"], sorted(p.name for p in output.iterdir()))
+            self.assertEqual(2, len(PdfReader(output / "galaxy-0.pdf").pages))
 
 
 class BundledConfigTests(unittest.TestCase):
@@ -833,11 +836,12 @@ class BundledConfigTests(unittest.TestCase):
         """同梱の設定ファイルが、生成の前の検査（列の設定・見出しの大きさを含む）を通る。"""
         from gingaforge.config import PROJECT_ROOT, load_properties
         from gingaforge.gaia_etch import (_column_headings, _column_properties, _init_galaxy_transformer,
-                                          _init_plate_writer, _selected_plates)
+                                          _init_plate_writer, _plate_order)
         expected = {
             "gaia-etch.properties": [("holes", .05)],
-            "gaia-ohp.properties": [("gray", .4)] * 3,
+            "gaia-ohp.properties": [("gray", .7)] * 3,
         }
+        orders = {"gaia-etch.properties": [(0, 1), (0, 0)], "gaia-ohp.properties": [(0, 1), (0, 0), (1, 0)]}
         for name, columns in expected.items():
             with self.subTest(name=name):
                 path = PROJECT_ROOT / name
@@ -849,7 +853,7 @@ class BundledConfigTests(unittest.TestCase):
                     GaiaSettings.from_properties(column, path.parent)
                     _init_galaxy_transformer(column)
                 _init_plate_writer(props, path, column_headings=_column_headings([change for change, _ in found]))
-                self.assertEqual({(0, 0), (0, 1)}, _selected_plates(props))
+                self.assertEqual(orders[name], _plate_order(props))
         ohp = EtchingSettings.from_properties(load_properties(PROJECT_ROOT / "gaia-ohp.properties"))
         self.assertEqual(15., ohp.fade_width_deg)
 

@@ -28,8 +28,8 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
             output = configs / 'output/custom/inverted'
             self.assertFalse((root / 'output').exists())
-            self.assertEqual(['custom-0.pdf', 'custom-1.pdf'], sorted(p.name for p in output.iterdir()))
-            self.assertEqual(['N0', 'S0'], PdfReader(output / 'custom-0.pdf').pages[0].extract_text().split())
+            self.assertEqual(['custom-0.pdf'], sorted(p.name for p in output.iterdir()))
+            self.assertEqual(['N1', 'N0', 'S0', 'S1'], PdfReader(output / 'custom-0.pdf').pages[0].extract_text().split())
 
     def test_cli_help_and_invalid_options(self):
         with tempfile.TemporaryDirectory() as directory:

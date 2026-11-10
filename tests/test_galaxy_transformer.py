@@ -160,7 +160,8 @@ class GalaxyOutputTests(unittest.TestCase):
         for pdf in (False, True):
             if pdf and not importlib.util.find_spec("reportlab"):
                 continue
-            for configured, expected in ((None, 69.25), ("0", 69.25), ("100", 50.)):
+            # 既定は全4原盤を1列に並べるので、1枚の上限は 297 / 4 = 74.25 mm。自動の直径はそれより10 mm小さい。
+            for configured, expected in ((None, 32.125), ("0", 32.125), ("60", 30.)):
                 with self.subTest(pdf=pdf, configured=configured):
                     with tempfile.TemporaryDirectory() as directory:
                         props = {"scale": "2"}
@@ -168,7 +169,7 @@ class GalaxyOutputTests(unittest.TestCase):
                             props["plate.frame-diameter"] = configured
                         with _init_plate_writer(props, Path(directory, "gaia-etch.properties"), pdf) as writer:
                             self.assertEqual(expected, writer.r)
-                            writer.write_frames(2)
+                            writer.write_frames()
                         if not pdf:
                             for page in Path(directory, "output", "gaia-etch", "normal").glob("*.svg"):
                                 for frame in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}circle"):
@@ -179,7 +180,7 @@ class GalaxyOutputTests(unittest.TestCase):
             props = {"plate.frame-diameter": "30", "color.invert": "yes"}
             with _init_plate_writer(props, Path(directory, "gaia-ohp.properties")) as writer:
                 self.assertEqual(15., writer.r)
-                writer.write_frames(2)
+                writer.write_frames()
                 # 円の内側、外接正方形の角（円の外側）、円の外側。
                 writer.write_hole(0, 0, 10., -10., .01)
                 writer.write_hole(0, 0, 14., 14., .01)
@@ -189,7 +190,7 @@ class GalaxyOutputTests(unittest.TestCase):
             self.assertEqual([], root.findall(namespace + "rect"))
             circles = root.findall(namespace + "circle")
             frames = [c for c in circles if c.get("stroke")]
-            self.assertEqual(["15.0mm"] * 2, [c.get("r") for c in frames])
+            self.assertEqual(["15.0mm"] * 4, [c.get("r") for c in frames])
             self.assertEqual(1, len(circles) - len(frames))
 
     def test_config_name_and_color_invert_select_output(self):
@@ -208,7 +209,7 @@ class GalaxyOutputTests(unittest.TestCase):
     def test_holes_outside_frame_are_skipped(self):
         with tempfile.TemporaryDirectory() as directory:
             with _init_plate_writer({}, Path(directory, "gaia-etch.properties")) as writer:
-                writer.write_frames(2)
+                writer.write_frames()
                 writer.write_hole(0, 0, 0., -writer.r, .01)
                 writer.write_hole(0, 0, writer.r + .01, 0., .01)
                 writer.write_hole(1, 1, 0., math.nan, .01)
@@ -219,13 +220,52 @@ class GalaxyOutputTests(unittest.TestCase):
     def test_svg_creates_all_four_frames_without_stars(self):
         with tempfile.TemporaryDirectory() as directory:
             with _init_plate_writer({}, Path(directory, "gaia-etch.properties")) as writer:
-                writer.write_frames(2)
+                writer.write_frames()
+            pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.svg"))
+            self.assertEqual(["gaia-etch-0.svg"], [p.name for p in pages])
+            root = ET.parse(pages[0]).getroot()
+            self.assertEqual(4, len(root.findall("{http://www.w3.org/2000/svg}circle")))
+            # 既定は空でつながる順に、上から1枚ずつ。
+            texts = root.findall("{http://www.w3.org/2000/svg}text")
+            self.assertEqual(["N1", "N0", "S0", "S1"], [e.text for e in texts])
+            self.assertEqual([37.125 - 32.125, 111.375 - 32.125, 185.625 - 32.125, 259.875 - 32.125],
+                             [float(e.get("y")[:-2]) for e in texts])
+
+    def test_select_order_and_per_column_split_pages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            props = {"plate.select": "S0, N1, N0", "plate.per-column": "2", "plate.frame-diameter": "40"}
+            with _init_plate_writer(props, Path(directory, "gaia-etch.properties")) as writer:
+                self.assertEqual(148.5, writer.slot_height)
+                writer.write_hole(1, 0, 0., 0., .5)
             pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.svg"))
             self.assertEqual(["gaia-etch-0.svg", "gaia-etch-1.svg"], [p.name for p in pages])
-            for page, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):
-                root = ET.parse(page).getroot()
-                self.assertEqual(2, len(root.findall("{http://www.w3.org/2000/svg}circle")))
-                self.assertEqual(labels, [e.text for e in root.findall("{http://www.w3.org/2000/svg}text")])
+            labels = [[e.text for e in ET.parse(page).getroot().findall("{http://www.w3.org/2000/svg}text")]
+                      for page in pages]
+            self.assertEqual([["S0", "N1"], ["N0"]], labels)
+            holes = [c for c in ET.parse(pages[0]).getroot().findall("{http://www.w3.org/2000/svg}circle")
+                     if not c.get("stroke")]
+            self.assertEqual([("105.0mm", "74.25mm")], [(c.get("cx"), c.get("cy")) for c in holes])
+
+    def test_repeat_copies_the_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            props = {"plate.select": "N1, N0", "plate.repeat": "3", "plate.frame-diameter": "40"}
+            with _init_plate_writer(props, Path(directory, "gaia-etch.properties")) as writer:
+                writer.write_hole(0, 0, 0., 0., .5)
+            root = ET.parse(Path(directory, "output", "gaia-etch", "normal", "gaia-etch-0.svg")).getroot()
+            self.assertEqual(["N1", "N0"] * 3, [e.text for e in root.findall("{http://www.w3.org/2000/svg}text")])
+            holes = [float(c.get("cy")[:-2]) for c in root.findall("{http://www.w3.org/2000/svg}circle")
+                     if not c.get("stroke")]
+            self.assertEqual([74.25, 173.25, 272.25], holes)
+
+    def test_removed_layout_keys_are_rejected(self):
+        for key in ("plate.column", "plate.row", "row.count"):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, f"{key} は廃止"):
+                _init_plate_writer({key: "1"}, "gaia-etch.properties")
+        for props, message in (({"plate.select": "N0, N0"}, "2回"), ({"plate.select": "N0, X1"}, "plate.select"),
+                               ({"plate.per-column": "-1"}, "plate.per-column"),
+                               ({"plate.repeat": "0"}, "plate.repeat")):
+            with self.subTest(props=props), self.assertRaisesRegex(ValueError, message):
+                _init_plate_writer(props, "gaia-etch.properties")
 
     @unittest.skipUnless(importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
                          "ReportLab and pypdf are required for PDF tests")
@@ -234,13 +274,12 @@ class GalaxyOutputTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             with _init_plate_writer({}, Path(directory, "gaia-etch.properties"), pdf=True) as writer:
-                writer.write_frames(2)
+                writer.write_frames()
             pages = sorted(Path(directory, "output", "gaia-etch", "normal").glob("*.pdf"))
-            self.assertEqual(2, len(pages))
-            for path, labels in zip(pages, (["N0", "S0"], ["N1", "S1"])):
-                pdf = PdfReader(path)
-                self.assertEqual(1, len(pdf.pages))
-                self.assertEqual(labels, pdf.pages[0].extract_text().split())
+            self.assertEqual(1, len(pages))
+            pdf = PdfReader(pages[0])
+            self.assertEqual(1, len(pdf.pages))
+            self.assertEqual(["N1", "N0", "S0", "S1"], pdf.pages[0].extract_text().split())
 
     @unittest.skipUnless(importlib.util.find_spec("reportlab") and importlib.util.find_spec("pypdf"),
                          "ReportLab and pypdf are required for PDF tests")
@@ -253,7 +292,7 @@ class GalaxyOutputTests(unittest.TestCase):
             folder = Path(directory, "output", "gaia-etch", "normal")
             self.assertEqual(["gaia-etch-0.pdf"], [p.name for p in folder.glob("*.pdf")])
             normal, mirrored = PdfReader(folder / "gaia-etch-0.pdf").pages
-            self.assertEqual(["N0", "S0"], normal.extract_text().split())
+            self.assertEqual(["N1", "N0", "S0", "S1"], normal.extract_text().split())
             front = normal.get_contents().get_data().decode()
             back = mirrored.get_contents().get_data().decode()
             # 両ページは同じ描画内容を呼び出し、2ページ目にだけ x → 用紙幅 - x の変換が加わる。
