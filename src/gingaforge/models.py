@@ -19,7 +19,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-"""天球・原盤上の位置を表すデータクラス群。"""
+"""天球・原板上の位置を表すデータクラス群。"""
 
 import math
 

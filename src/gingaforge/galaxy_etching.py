@@ -2,10 +2,10 @@
 """Gaiaの局所光量を、最小径・金属幅を満たす円形穴、または開口率の画像にする。
 
 穴は個々の恒星ではなく局所的な合計光量の標本。全穴を同じ直径にし、
-固定ピッチの候補格子の一部を選ぶことで、原盤全体の最小金属幅を保証する。
+固定ピッチの候補格子の一部を選ぶことで、原板全体の最小金属幅を保証する。
 OHP印刷用の画像（階調・点描）では、セルの必要穴面積をセル面積で割った開口率を、
 プリンターの画素に合わせた解像度で描く。
-Gaiaの集計ビンの光量は、原盤上でビンとセルが重なる面積に比例して分配する。
+Gaiaの集計ビンの光量は、原板上でビンとセルが重なる面積に比例して分配する。
 天の川強調を有効にすると、背景に相当する一様な明るさを差し引いてから穴・画像にする。
 端のフェードを有効にすると、担当領域の両端の銀経120度・240度に近づくほど開口を絞り、そこで光量を0にする。
 """
@@ -206,7 +206,7 @@ class EtchingBuilder:
     def __init__(self, transformer, settings, frame_radius, plates=None):
         """半径 frame_radius の円形枠の内側に穴・画像を置く。
 
-        plates: 穴・画像を作る原盤 ``(出力位置, 番号)`` の集合。Noneなら全原盤。
+        plates: 穴・画像を作る原板 ``(出力位置, 番号)`` の集合。Noneなら全原板。
         """
         self.transformer = transformer
         self.regions = [region for region in range(len(transformer.LONGITUDE_REGIONS))
@@ -237,11 +237,11 @@ class EtchingBuilder:
         self.cells[key] += self.reference_area * relative_flux
 
     def add_bin(self, lon_min, lon_max, lat_min, lat_max, relative_flux):
-        """銀経・銀緯の範囲（度）に一様に広がる光量を、原盤上で重なる面積に比例してセルへ分配する。
+        """銀経・銀緯の範囲（度）に一様に広がる光量を、原板上で重なる面積に比例してセルへ分配する。
 
         ビンの中心1点に置くと、ビンとセルの大きさの比が整数でないため、セルごとに入る
         ビンの数が変わり（例えば4個と5個）、一様な空にも格子状の縞が出る。
-        原盤上のビンの像は、各辺の両端の平均で決まる長方形とみなす（ビンが小さいので近似の誤差は小さい）。
+        原板上のビンの像は、各辺の両端の平均で決まる長方形とみなす（ビンが小さいので近似の誤差は小さい）。
         """
         if not math.isfinite(relative_flux) or relative_flux < 0:
             raise ValueError("光量は有限の非負値が必要です。")
@@ -256,7 +256,7 @@ class EtchingBuilder:
                 self.cells[(*unit, ix, iy)] += area * x_fraction * y_fraction
 
     def _plate_corner(self, unit, longitude, latitude):
-        """ビンの角の原盤座標。隣り合うビンが共有する角は1回だけ計算する。"""
+        """ビンの角の原板座標。隣り合うビンが共有する角は1回だけ計算する。"""
         if unit != self._corner_unit:
             self._corner_unit, self._corners = unit, {}
         key = (round(longitude * 1e7), round(latitude * 1e7))
@@ -319,7 +319,7 @@ class EtchingBuilder:
             keys += unit_keys
             smoothed.append(values)
         smoothed = np.concatenate(smoothed)
-        # 4原盤共通の黒点・基準点。原盤ごとの自動露出はしない。
+        # 4原板共通の黒点・基準点。原板ごとの自動露出はしない。
         black, anchor = np.percentile(smoothed, [s.milky_way_black_percentile,
                                                  s.milky_way_anchor_percentile])
         if not anchor > black:
@@ -337,7 +337,7 @@ class EtchingBuilder:
         }
 
     def _faded(self, cells):
-        """各セルの面積に、セル中心の銀経のフェードの倍率を掛ける。作らない原盤のセルはそのまま返す。"""
+        """各セルの面積に、セル中心の銀経のフェードの倍率を掛ける。作らない原板のセルはそのまま返す。"""
         width = self.settings.fade_width_deg
         selected = {divmod(region, 2) for region in self.regions}
 
@@ -360,7 +360,7 @@ class EtchingBuilder:
         return self._faded(cells) if self.settings.fade_width_deg else cells
 
     def build(self):
-        """穴と、原盤ごとの ``{plate, holes, linear_area_mm2, requested_area_mm2, capacity_loss_area_mm2}`` を返す。
+        """穴と、原板ごとの ``{plate, holes, linear_area_mm2, requested_area_mm2, capacity_loss_area_mm2}`` を返す。
 
         ``linear_area_mm2`` は強調前（G帯光量に比例）の要求面積。
         """
@@ -369,7 +369,7 @@ class EtchingBuilder:
         for region in self.regions:
             unit = divmod(region, 2)
             rng = random.Random(self.settings.seed + region)
-            # 蛇行順の誤差繰越。各セルの誤差は最小穴1個未満、原盤全体では半個以内。
+            # 蛇行順の誤差繰越。各セルの誤差は最小穴1個未満、原板全体では半個以内。
             keys = sorted((key for key in cells if key[:2] == unit),
                           key=lambda key: (key[3], key[2] if key[3] % 2 == 0 else -key[2]))
             carry = .5
@@ -396,11 +396,11 @@ class EtchingBuilder:
         return holes, plates
 
     def build_raster(self):
-        """開口率の画像と、原盤ごとの ``{plate, max_open_fraction, open_area_mm2, linear_area_mm2,
+        """開口率の画像と、原板ごとの ``{plate, max_open_fraction, open_area_mm2, linear_area_mm2,
         requested_area_mm2, capacity_loss_area_mm2}`` を返す。
 
         画像は ``(dir, index, pixels, left, top, width, height)`` で、pixels は raster-dpi の uint8（255が光を通す）、
-        left・top は原盤中心から画像の左上まで、width・height は画像の大きさ（mm）。
+        left・top は原板中心から画像の左上まで、width・height は画像の大きさ（mm）。
         開口率はセルの必要面積をセル面積で割った値で、1を超える分は容量不足とする。
         画素の値は、セル中心の開口率を画素中心で双線形補間する。補間の山はセル1個分の面積を持つため、
         画像をセルの範囲から半セル広げて置けば、開口面積の合計は補間の前後で変わらない。

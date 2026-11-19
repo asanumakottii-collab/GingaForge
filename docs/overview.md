@@ -10,7 +10,7 @@ GingaForgeの全体像をまとめます。インストールと基本の使い�
 ```mermaid
 flowchart TD
     A["Gaia Archive<br/>（--download-gaia のときだけ通信）"] --> B["source/gaia/<br/>0.1度ごとの光量のキャッシュ"]
-    B --> C["原盤セルへの集計<br/>（平らな原板へ投影して分配）"]
+    B --> C["原板セルへの集計<br/>（平らな原板へ投影して分配）"]
     C --> D["天の川強調<br/>（milky-way = yes のとき）"]
     D --> I["端のフェード<br/>（fade.width-deg > 0 のとき）"]
     I --> E{"render"}
@@ -24,24 +24,24 @@ flowchart TD
 |---|---|---|
 | 取得 | Gaia DR3の全天体を空の区画ごとに集計して保存する | `gaia_catalog.download_gaia` |
 | 読み込み | キャッシュの条件とチェックサムを確かめて読む | `gaia_catalog.iter_flux_bins` |
-| 集計 | 空の区画の光量を、原盤上のセルごとの必要な開口面積にする | `EtchingBuilder.add_bin` |
+| 集計 | 空の区画の光量を、原板上のセルごとの必要な開口面積にする | `EtchingBuilder.add_bin` |
 | 強調 | 背景に相当する明るさを差し引く | `EtchingBuilder._enhance_milky_way` |
 | フェード | 銀経240度・120度へ向けて光量を0にする | `EtchingBuilder._faded`、`fade_gain` |
 | 描画 | 開口面積を穴または画像にする | `EtchingBuilder.build` / `build_raster` |
 | 書き出し | 用紙に配置してSVG・PDFにする | `plate_writer` |
 
-既存の原盤は、読み込みから描画までが成功した後で上書きします。途中で失敗しても前回の原盤は残ります。
+既存の原板は、読み込みから描画までが成功した後で上書きします。途中で失敗しても前回の原板は残ります。
 
 ### 用語
 
 | 用語 | 意味 |
 |---|---|
-| 原盤（原板） | 投影機に入れる1枚分の円形の版。N0・N1・S0・S1の4枚で担当領域を覆う |
+| 原板 | 投影機に入れる1枚分の円形の版。N0・N1・S0・S1の4枚で担当領域を覆う |
 | 集計ビン | Gaiaの光量を合計する空の区画（同梱設定は銀経・銀緯0.1度） |
-| セル | 原盤上で光量をまとめる正方形の区画（`cell-size-mm`） |
+| セル | 原板上で光量をまとめる正方形の区画（`cell-size-mm`） |
 | 開口面積 | 光を通す面積。投影の明るさはこの面積に比例するものとして扱う |
 | 開口率 | セルの必要な開口面積 ÷ セルの面積 |
-| 列 | 用紙を横に等分した区画。列ごとに設定を変えて原盤を比べられる（`column.count`） |
+| 列 | 用紙を横に等分した区画。列ごとに設定を変えて原板を比べられる（`column.count`） |
 | 行 | 用紙を縦に等分した区画。2行目以降は1行目のコピー（`row.count`） |
 
 ## 方式とコマンド
@@ -65,8 +65,8 @@ flowchart TD
 | 端のフェード `fade.width-deg` | なし | 15度 |
 | 原板の距離 `plate-distance` | 50 mm | 400 mm |
 | レンズの焦点距離 `focal-length` | 19 mm | 30 mm |
-| 原盤枠の直径 `plate.frame-diameter` | 138.5 mm（自動計算） | 50 mm |
-| 用紙 | 2枚（1枚に1原盤） | 1枚（2原盤 × 3列 × 2行の計12枚） |
+| 原板枠の直径 `plate.frame-diameter` | 138.5 mm（自動計算） | 50 mm |
+| 用紙 | 2枚（1枚に1原板） | 1枚（2原板 × 3列 × 2行の計12枚） |
 
 ### オプション
 
@@ -84,10 +84,10 @@ flowchart TD
 
 ## 担当領域
 
-銀緯 −20度以上 +20度以下を次の4枚の原盤に分けます。
+銀緯 −20度以上 +20度以下を次の4枚の原板に分けます。
 領域の定義は `src/gingaforge/galaxy_geometry.py` の `REGIONS` にまとめています。
 
-| 原盤 | 銀経の範囲 | 中心銀経 |
+| 原板 | 銀経の範囲 | 中心銀経 |
 |---|---|---|
 | S1 | 240度以上300度未満 | 270度 |
 | S0 | 300度以上360度未満 | 330度 |
@@ -100,18 +100,18 @@ flowchart TD
 - 銀経120度以上240度未満、および銀緯±20度の外は対象外です。
 - N/Sは用紙の上段/下段の識別子で、赤緯・銀緯の正負を意味しません。
 - 中心配置の投影機に加えて、偏心投影機（`projector-horizontal`・`projector-vertical`）にも対応します。投影の計算は [gaia.md](gaia.md#投影) を参照してください。
-- 恒星原盤は別プロジェクトの [OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library) が担当します。
+- 恒星原板は別プロジェクトの [OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library) が担当します。
 
 ## 用紙の配置
 
 用紙はA4縦で、上半分がN、下半分がSの段です。番号（0・1）の並べ方は `plate.column`・`plate.row` で決まり、
-1用紙に入らない番号は次の用紙へ送ります。作る原盤は `plate.select` で選びます。同梱の設定はどちらも `N0, N1` です。
+1用紙に入らない番号は次の用紙へ送ります。作る原板は `plate.select` で選びます。同梱の設定はどちらも `N0, N1` です。
 
-選ばなかった原盤の場所は空きます。
+選ばなかった原板の場所は空きます。
 
 同梱の `gaia-etch` は `plate.column = 1`、`plate.row = 1` で2用紙に、
 `gaia-ohp` は `plate.column = 1`、`plate.row = 2`、`column.count = 3`、`row.count = 2` で1用紙に並べます。
-`row.count` が2以上のときは原盤のない段の場所を行に取らないため、`gaia-ohp` の下半分は2行目のコピーになります。
+`row.count` が2以上のときは原板のない段の場所を行に取らないため、`gaia-ohp` の下半分は2行目のコピーになります。
 
 ```
  gaia-etch-0       gaia-etch-1                    gaia-ohp-0
@@ -124,12 +124,12 @@ flowchart TD
 +-----------+     +-----------+                  +-----------------+
                                                    #1     #2    #3
 
-（ ）は同梱の plate.select で選んでいない原盤
+（ ）は同梱の plate.select で選んでいない原板
 ```
 
 PDFは倍率100%・「用紙に合わせる」なしで印刷してください。詳しい決まりは
-[原盤枠と用紙の配置](gaia.md#原盤枠と用紙の配置)、[列ごとに設定を変えて並べる](gaia.md#列ごとに設定を変えて並べる)、
-[行で同じ原盤を並べる](gaia.md#行で同じ原盤を並べる)を参照してください。
+[原板枠と用紙の配置](gaia.md#原板枠と用紙の配置)、[列ごとに設定を変えて並べる](gaia.md#列ごとに設定を変えて並べる)、
+[行で同じ原板を並べる](gaia.md#行で同じ原板を並べる)を参照してください。
 
 ## 出力先
 
@@ -145,8 +145,8 @@ output/
 
 ファイル名は `<設定ファイル名>-<用紙番号>.svg`・`.pdf` です。`-mirrored` でも別のファイルは作らず、同じPDFの2ページ目に左右反転を追加します。
 
-設定ごとにフォルダが分かれるため、ある設定の生成が別の設定の原盤を上書きすることはありません。
-既存の原盤を残したまま試す場合は、設定ファイルを同じフォルダに別名でコピーして指定します。
+設定ごとにフォルダが分かれるため、ある設定の生成が別の設定の原板を上書きすることはありません。
+既存の原板を残したまま試す場合は、設定ファイルを同じフォルダに別名でコピーして指定します。
 
 ```sh
 cp gaia-ohp.properties gaia-test.properties
@@ -163,7 +163,7 @@ cp gaia-ohp.properties gaia-test.properties
 
 ## ライブラリとして使う
 
-原盤は `gingaforge.gaia_etch.generate` でも生成できます。戻り値は出力フォルダです。
+原板は `gingaforge.gaia_etch.generate` でも生成できます。戻り値は出力フォルダです。
 
 ```python
 from gingaforge.gaia_etch import generate
@@ -190,12 +190,12 @@ docs/                      ドキュメント
 | モジュール（`src/gingaforge/`） | 役割 | 主なもの |
 |---|---|---|
 | `cli.py` | 共通コマンド `gingaforge` | `main` |
-| `gaia_etch.py` | 設定の検査、原盤の選択、列・行の展開、生成全体の進行 | `generate`、`main` |
+| `gaia_etch.py` | 設定の検査、原板の選択、列・行の展開、生成全体の進行 | `generate`、`main` |
 | `gaia_catalog.py` | Gaia DR3の光量の取得、キャッシュの検証・読み込み | `GaiaSettings`、`download_gaia`、`iter_flux_bins` |
 | `galaxy_geometry.py` | 担当領域、レンズの公式、投影・逆投影 | `REGIONS`、`GalaxyTransformer` |
 | `galaxy_etching.py` | セルへの集計、天の川強調、端のフェード、穴の配置、画像の作成 | `EtchingSettings`、`EtchingBuilder`、`fade_gain`、`gray_pixels`、`dither_pixels` |
 | `plate_writer.py` | 用紙の配置とSVG・PDFの書き出し（穴はベクトル、画像は画素） | `PlateWriterSVG`、`PlateWriterPDF` |
-| `models.py` / `mathvector.py` | 天球・原盤上の座標、ICRSと銀河座標の変換、ベクトル演算 | `SpherePosition`、`PlatePosition`、`MathVector` |
+| `models.py` / `mathvector.py` | 天球・原板上の座標、ICRSと銀河座標の変換、ベクトル演算 | `SpherePosition`、`PlatePosition`、`MathVector` |
 | `config.py` | プロパティファイルの読み込み、出力先の決定 | `load_properties`、`output_directory` |
 
 ## テスト
@@ -206,6 +206,6 @@ docs/                      ドキュメント
 
 | テスト（`tests/`） | 対象 |
 |---|---|
-| `test_galaxy_transformer.py` | 座標変換、投影と逆投影、原盤の書き出し |
-| `test_gaia_etching.py` | 集計、天の川強調、端のフェード、穴と画像の作成、列と行の配置、原盤の選択、Gaiaキャッシュ、コマンド、同梱の設定 |
+| `test_galaxy_transformer.py` | 座標変換、投影と逆投影、原板の書き出し |
+| `test_gaia_etching.py` | 集計、天の川強調、端のフェード、穴と画像の作成、列と行の配置、原板の選択、Gaiaキャッシュ、コマンド、同梱の設定 |
 | `test_integration.py` | 別プロセスで実行したコマンド（設定ファイル基準の入出力、`--help`、不正なオプション） |

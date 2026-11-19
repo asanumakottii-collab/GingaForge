@@ -94,7 +94,7 @@ class GalaxyTransformerTests(unittest.TestCase):
                 lens_distance(image, focus)
 
     def test_flat_plate_projection_scale_and_direction(self):
-        # 中心配置。レンズ中心は原盤中心の方向に plate + lens だけ出ていて、原板は平ら。
+        # 中心配置。レンズ中心は原板中心の方向に plate + lens だけ出ていて、原板は平ら。
         transformer = GalaxyTransformer(0.125, 6500., 0., 0., 50., 19.)
         lens = lens_distance(6500. - 50., 19.)
         offset = 50. + lens

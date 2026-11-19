@@ -1,5 +1,5 @@
 # Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
-"""GingaForge: OHPフィルム・Gaiaエッチング用の天の川原盤。"""
+"""GingaForge: OHPフィルム・Gaiaエッチング用の天の川原板。"""
 
 import argparse
 import sys

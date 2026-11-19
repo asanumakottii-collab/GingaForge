@@ -1,7 +1,7 @@
 # Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
-"""GingaForge: 銀河投影機（ぎんとう）用の天の川原盤を生成するライブラリ。
+"""GingaForge: 銀河投影機（ぎんとう）用の天の川原板を生成するライブラリ。
 
-- ``gingaforge.gaia_etch.generate(config, formats=("svg", "pdf"))``: Gaia DR3のG帯光量からエッチング用の穴原盤（SVG / PDF）
+- ``gingaforge.gaia_etch.generate(config, formats=("svg", "pdf"))``: Gaia DR3のG帯光量からエッチング用の穴原板（SVG / PDF）
 """
 
 __version__ = "0.1.0"

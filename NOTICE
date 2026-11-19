@@ -14,10 +14,10 @@ Gaia データ
 
   次のものには GPL ではなく、Gaia データの利用条件が適用されます。
 
-  - output/gaia-etch/ と output/gaia-ohp/ の原盤
+  - output/gaia-etch/ と output/gaia-ohp/ の原板
     （Gaia DR3 の G 帯光量を集計・加工して生成したもの）
   - docs/images/plates.png と docs/images/render-modes.png
-    （上記の原盤から作成したプレビュー画像）
+    （上記の原板から作成したプレビュー画像）
   - --download-gaia で取得するデータ（リポジトリには含みません）
 
   クレジット: ESA/Gaia/DPAC

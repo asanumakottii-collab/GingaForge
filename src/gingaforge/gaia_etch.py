@@ -1,8 +1,8 @@
 # Copyright (C) 2026 東京大学地文研究会天文部; GPL-2.0-or-later
-"""Gaia DR3のG帯光量からエッチング・OHP印刷用の天の川原盤を生成する。既定でSVGとPDFの両方を出力する。
+"""Gaia DR3のG帯光量からエッチング・OHP印刷用の天の川原板を生成する。既定でSVGとPDFの両方を出力する。
 
 ``render`` で、円形の穴（holes）か、開口率の階調（gray）・点描（dither）の画像かを選ぶ。
-``column.count`` を2以上にすると、列ごとに設定を変えた原盤一式を用紙に左から並べる。
+``column.count`` を2以上にすると、列ごとに設定を変えた原板一式を用紙に左から並べる。
 ``row.count`` を2以上にすると、その全列を同じ内容で用紙に上から並べる。
 """
 
@@ -34,11 +34,11 @@ def _init_galaxy_transformer(props):
 
 
 def _selected_plates(props):
-    """``plate.select`` の原盤を ``(出力位置, 番号)`` の集合で返す。省略時は全原盤。"""
+    """``plate.select`` の原板を ``(出力位置, 番号)`` の集合で返す。省略時は全原板。"""
     names = list(REGIONS)
     selected = [name.strip() for name in props.get("plate.select", ",".join(names)).split(",")]
     if not set(selected) <= set(names):
-        raise ValueError(f"plate.select: 原盤は {', '.join(names)} からカンマ区切りで指定してください。")
+        raise ValueError(f"plate.select: 原板は {', '.join(names)} からカンマ区切りで指定してください。")
     return {divmod(names.index(name), 2) for name in selected}
 
 
@@ -100,7 +100,7 @@ def _column_properties(props):
 
 
 def _column_headings(changes):
-    """列の見出し。1列で設定を変えていなければ見出しを付けない（従来の原盤と同じ）。"""
+    """列の見出し。1列で設定を変えていなければ見出しを付けない（従来の原板と同じ）。"""
     if len(changes) == 1 and not changes[0]:
         return [()]
     return [(f"#{number}", *([f"{key} = {value}" for key, value in change.items()] or ["(no changes)"]))
@@ -108,13 +108,13 @@ def _column_headings(changes):
 
 
 def _build_column(gaia, etching, transformer, frame_radius, plates):
-    """1列分の原盤一式の穴・画像を作り、``(穴, 穴の半径, 画像)`` を返します。使わない方は空です。
+    """1列分の原板一式の穴・画像を作り、``(穴, 穴の半径, 画像)`` を返します。使わない方は空です。
 
-    光量は全原盤の分を集計する。天の川強調の黒点・基準点が、原盤の選び方で変わらないように。
+    光量は全原板の分を集計する。天の川強調の黒点・基準点が、原板の選び方で変わらないように。
     """
     regions, limit = GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT
     print(f"平らな原板への投影: ドーム半径 {transformer.sphere / etching.scale:g} mm / "
-          f"原盤距離 {transformer.plate / etching.scale:g} mm / "
+          f"原板距離 {transformer.plate / etching.scale:g} mm / "
           f"焦点距離 {transformer.focus / etching.scale:g} mm / 倍率 {etching.scale:g}")
     lens = [transformer.lens_distance(*divmod(region, 2)) for region in range(len(regions))]
     print(f"原板とレンズの距離（出力上）: {min(lens):.4f}〜{max(lens):.4f} mm")
@@ -159,7 +159,7 @@ def _build_column(gaia, etching, transformer, frame_radius, plates):
 
 
 def generate(config_path, formats=("svg", "pdf"), download=False):
-    """設定ファイルに従ってGaia原盤を formats（"svg" / "pdf" / "pdf-mirrored"）で生成し、出力フォルダを返します。
+    """設定ファイルに従ってGaia原板を formats（"svg" / "pdf" / "pdf-mirrored"）で生成し、出力フォルダを返します。
 
     "pdf-mirrored" は "pdf" の2ページ目に、裏面印刷用に左右反転した同じ内容を追加する。
     """
@@ -184,7 +184,7 @@ def generate(config_path, formats=("svg", "pdf"), download=False):
     if download:
         for _, gaia in caches.values():
             download_gaia(gaia, GalaxyTransformer.LONGITUDE_REGIONS, GalaxyTransformer.LATITUDE_LIMIT)
-    # 読み込み・配置に失敗したとき、既存原盤を途中結果で上書きしない。
+    # 読み込み・配置に失敗したとき、既存原板を途中結果で上書きしない。
     headings = _column_headings([change for change, *_ in columns])
     writers = [_init_plate_writer(props, config_path, fmt == "pdf", headings, fmt == "pdf-mirrored")
                for fmt in formats]
@@ -222,6 +222,6 @@ def main(argv=None, config="gaia-etch.properties", prog=None):
     try:
         generate(args.config, args.formats, args.download_gaia)
     except (OSError, ValueError, RuntimeError) as exc:
-        print(f"Gaia原盤の生成に失敗しました: {exc}", file=sys.stderr)
+        print(f"Gaia原板の生成に失敗しました: {exc}", file=sys.stderr)
         return 2
     return 0

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Gaiaの観測データから、プラネタリウムの天の川原盤をつくる。</strong><br>
+  <strong>Gaiaの観測データから、プラネタリウムの天の川原板をつくる。</strong><br>
   Generate Milky Way projection plates for planetarium projectors from Gaia DR3.
 </p>
 
@@ -24,12 +24,12 @@
 
 ---
 
-**GingaForge** は、銀河投影機（ぎんとう）用の天の川原盤を生成するPythonライブラリです。
+**GingaForge** は、銀河投影機（ぎんとう）用の天の川原板を生成するPythonライブラリです。
 Gaia DR3の星の光を空の区画ごとに合計し、金属エッチングやOHPフィルム印刷でそのまま使えるSVG・PDFにします。
 
-![天の川原盤のプレビュー。左からS1、S0、N0、N1](docs/images/plates.png)
+![天の川原板のプレビュー。左からS1、S0、N0、N1](docs/images/plates.png)
 
-<p align="center"><sub><code>gaia-ohp</code> の設定に全原盤を選んで生成した原盤（階調）。左から S1・S0・N0・N1 の順に、銀経240度から120度までの240度分を担当します。S1の下端とN1の上端が端のフェードです。プレビューは見やすいように暗い部分を明るくしています。</sub></p>
+<p align="center"><sub><code>gaia-ohp</code> の設定に全原板を選んで生成した原板（階調）。左から S1・S0・N0・N1 の順に、銀経240度から120度までの240度分を担当します。S1の下端とN1の上端が端のフェードです。プレビューは見やすいように暗い部分を明るくしています。</sub></p>
 
 ## 特徴
 
@@ -38,7 +38,7 @@ Gaia DR3の星の光を空の区画ごとに合計し、金属エッチングや
 - **2種類の製版**: 金属エッチング用の穴と、OHPフィルム印刷用の階調・点描に対応します。
 - **天の川強調**: 背景に相当する明るさを差し引き、ドームで天の川が際立つようにします（OHP用）。
 - **端のフェード**: 担当領域の両端の銀経240度と120度へ向けてなめらかに暗くし、端で光量を0にします（OHP用）。
-- **1枚で比較**: 列ごとに設定を変えて並べ、1回のテスト印刷で描き方や明るさを比べられます。行を増やすと同じ原盤を1枚の用紙にコピーできます。
+- **1枚で比較**: 列ごとに設定を変えて並べ、1回のテスト印刷で描き方や明るさを比べられます。行を増やすと同じ原板を1枚の用紙にコピーできます。
 
 ## クイックスタート
 
@@ -49,7 +49,7 @@ Python 3.11以上を使います。このフォルダだけで実行できます
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[test]'
 
-# 2. 原盤の生成（初回は Gaia の光量も取得する）
+# 2. 原板の生成（初回は Gaia の光量も取得する）
 .venv/bin/gingaforge gaia-etch --download-gaia
 .venv/bin/gingaforge gaia-ohp
 ```
@@ -57,7 +57,7 @@ python3 -m venv .venv
 生成物は `output/<設定ファイル名>/` に保存されます。
 
 > [!IMPORTANT]
-> PDFは **倍率100%・「用紙に合わせる」なし** で印刷してください。原盤の寸法が変わると、ドームに正しく投影できません。
+> PDFは **倍率100%・「用紙に合わせる」なし** で印刷してください。原板の寸法が変わると、ドームに正しく投影できません。
 
 ## 2つの方式
 
@@ -96,16 +96,16 @@ flowchart LR
     F --> G
 ```
 
-銀緯±20度の範囲を、4枚の円形原盤に分けて担当します。銀経120度以上240度未満は対象外です。
+銀緯±20度の範囲を、4枚の円形原板に分けて担当します。銀経120度以上240度未満は対象外です。
 
-| 原盤 | 銀経の範囲 | 原盤 | 銀経の範囲 |
+| 原板 | 銀経の範囲 | 原板 | 銀経の範囲 |
 |---|---|---|---|
 | S1 | 240度以上300度未満 | N0 | 0度以上60度未満 |
 | S0 | 300度以上360度未満 | N1 | 60度以上120度未満 |
 
-作る原盤は設定ファイルの `plate.select` で選びます（同梱の設定は `N0, N1`）。
+作る原板は設定ファイルの `plate.select` で選びます（同梱の設定は `N0, N1`）。
 
-恒星原盤は別プロジェクトの[OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library)が担当します。
+恒星原板は別プロジェクトの[OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library)が担当します。
 
 ## 使い方
 
@@ -134,7 +134,7 @@ flowchart LR
 | 対象 | ライセンス |
 |---|---|
 | コード | [GPL-2.0-or-later](LICENSE) |
-| Gaiaデータと、そこから生成した原盤（`output/`）・プレビュー画像 | [CC BY-NC 3.0 IGO](https://www.cosmos.esa.int/web/gaia-users/license)（クレジット: `ESA/Gaia/DPAC`） |
+| Gaiaデータと、そこから生成した原板（`output/`）・プレビュー画像 | [CC BY-NC 3.0 IGO](https://www.cosmos.esa.int/web/gaia-users/license)（クレジット: `ESA/Gaia/DPAC`） |
 
 コードの一部は[OTL](https://github.com/asanumakottii-collab/Orb-Transform-Library)から移行して変更したものです。条件の詳細は[NOTICE](NOTICE)を参照してください。
 

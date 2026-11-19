@@ -170,7 +170,7 @@ class EtchingTests(unittest.TestCase):
 
     @staticmethod
     def per_solid_angle(builder):
-        """セルの光量を、セルが写る空の広さで割ったもの（平らな原板では端ほど空が原盤上で広がる）。"""
+        """セルの光量を、セルが写る空の広さで割ったもの（平らな原板では端ほど空が原板上で広がる）。"""
         return {key: value / builder._solid_angle_deg2(key[:2], *key[2:]) for key, value in builder.cells.items()}
 
     @staticmethod
@@ -185,7 +185,7 @@ class EtchingTests(unittest.TestCase):
         return worst
 
     def test_uniform_sky_bins_fill_cells_without_moire(self):
-        # 0.1度のビンは原盤上で約0.087 mm。0.4 mmのセルには4個または5個ずつ入るので、
+        # 0.1度のビンは原板上で約0.087 mm。0.4 mmのセルには4個または5個ずつ入るので、
         # ビンの中心1点に光量を置くと、一様な空でも隣のセルと5/4倍違う縞ができる。
         settings = EtchingSettings(cell_mm=.4)
         area = EtchingBuilder(lens_at_projector(), settings, 69.25)
@@ -211,7 +211,7 @@ class EtchingTests(unittest.TestCase):
 
     def test_bin_is_split_by_overlap_area(self):
         builder = EtchingBuilder(lens_at_projector(), EtchingSettings(cell_mm=.4), 69.25)
-        # 原盤中心（セルの角）をまたぐビン。レンズ中心がドーム中心なら、平らな原板では
+        # 原板中心（セルの角）をまたぐビン。レンズ中心がドーム中心なら、平らな原板では
         # x = L tan b / cos(l - 30度)、y = -L tan(l - 30度)。ビンの像は各辺の両端の平均の長方形とみなす。
         builder.add_bin(29.96, 30.06, -.04, .06, 1.)
         tan, cos = (lambda f: lambda degrees: f(math.radians(degrees)))(math.tan), (lambda d: math.cos(math.radians(d)))
@@ -251,7 +251,7 @@ class EtchingTests(unittest.TestCase):
                 EtchingSettings.from_properties({key: value})
 
     def milky_way_builder(self, **settings):
-        # 原盤上 ±8 mm の範囲を使うので、空の角度が小さく済む原板とレンズの距離50 mmで調べる。
+        # 原板上 ±8 mm の範囲を使うので、空の角度が小さく済む原板とレンズの距離50 mmで調べる。
         transformer = lens_at_projector()
         builder = EtchingBuilder(transformer, EtchingSettings(**settings), 69.25)
         # 銀緯方向(x)に明るさが落ちる帯と、外側の明るい星1つ。
@@ -644,7 +644,7 @@ class GaiaCommandTests(unittest.TestCase):
             svg = ET.parse(output / "galaxy-0.svg").getroot()
             namespace = "{http://www.w3.org/2000/svg}"
             texts = [element.text for element in svg.iter(namespace + "text")]
-            # 見出しは用紙の上に1回。原盤名は2列×2行×2枚。
+            # 見出しは用紙の上に1回。原板名は2列×2行×2枚。
             self.assertEqual(["#1", "(no changes)", "#2", "galaxy.etch.flux-gain = 2"], texts[:4])
             self.assertEqual(sorted([f"{name} #{column}" for name in ("N0", "N1") for column in (1, 2)] * 2),
                              sorted(texts[4:]))
@@ -695,7 +695,7 @@ class GaiaCommandTests(unittest.TestCase):
             ("row.count=2\ncolumn.count=2\ncolumn.2.row.count=1\n", "全列共通"),
             ("row.count=0\n", "row.count"),
             ("row.count=two\n", "row.count"),
-            # 全原盤を2行にすると、1段の高さが74.25 mmで、plate.row=2 の原盤は37.125 mmまで。
+            # 全原板を2行にすると、1段の高さが74.25 mmで、plate.row=2 の原板は37.125 mmまで。
             ("row.count=2\nplate.frame-diameter=40\n", "plate.frame-diameter"),
             ("plate.select=N0,X1\n", "plate.select"),
             ("plate.select=\n", "plate.select"),
@@ -703,10 +703,10 @@ class GaiaCommandTests(unittest.TestCase):
             ("column.count=2\ncolumn.2.galaxy.etch.flux-gain=-1\n", "列2: galaxy.etch.flux-gain"),
             ("column.count=2\ngalaxy.gaia.faint-limit=17\ncolumn.2.galaxy.gaia.faint-limit=16\n",
              "galaxy.gaia.input"),
-            # 原盤が列の幅（210 mm ÷ 列の数）に収まらない。
+            # 原板が列の幅（210 mm ÷ 列の数）に収まらない。
             ("column.count=10\n", "plate.frame-diameter"),
             ("column.count=4\nplate.frame-diameter=60\n", "plate.frame-diameter"),
-            # 原盤は収まるが、列の見出しが最上段の原盤名と重なる。
+            # 原板は収まるが、列の見出しが最上段の原板名と重なる。
             ("column.count=2\nplate.frame-diameter=60\ncolumn.2.galaxy.etch.flux-gain=2\n", "列の見出し"),
         )
         for settings, message in cases:
@@ -784,7 +784,7 @@ class GaiaCommandTests(unittest.TestCase):
             frames = [[c.attrib for c in root.iter(namespace + "circle") if c.get("stroke")] for root in roots]
             self.assertEqual(2, len(frames[1]))
             self.assertEqual(frames[0][::2], frames[1])
-            # 全原盤の N0 の画像と、S1 の光を含めて決めた黒点・基準点も含めて同じ。
+            # 全原板の N0 の画像と、S1 の光を含めて決めた黒点・基準点も含めて同じ。
             images = [self.svg_images(page) for page in pages]
             self.assertEqual(1, len(images[1]))
             self.assertTrue(np.array_equal(images[0][0][1], images[1][0][1]))

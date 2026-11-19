@@ -19,7 +19,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-"""OHP・Gaia原盤で共有する担当領域と、平らな原板へのレンズ中心からの投影。"""
+"""OHP・Gaia原板で共有する担当領域と、平らな原板へのレンズ中心からの投影。"""
 
 import math
 from .mathvector import MathVector
@@ -68,9 +68,9 @@ class GalaxyTransformer:
         self.focus = focus
 
         # 投影機の位置は従来どおり赤道座標の(0, ±水平距離, ±垂直距離)。
-        # 各担当領域の銀経中央・銀緯0度への光線を原盤中心に合わせる。
+        # 各担当領域の銀経中央・銀緯0度への光線を原板中心に合わせる。
         # OTLと同じく、原板は投影機中心から plate の位置にあり、レンズはその先に、
-        # 原板とレンズの距離がレンズの公式を満たす位置にある。原板は平らで、原盤中心の方向に垂直。
+        # 原板とレンズの距離がレンズの公式を満たす位置にある。原板は平らで、原板中心の方向に垂直。
         galactic_north = SpherePosition.from_galactic(0., 90.).to_vector(1.)
         self._plate_geometry = {}
         for region, (start, end) in enumerate(self.LONGITUDE_REGIONS):
@@ -111,14 +111,14 @@ class GalaxyTransformer:
         return None
 
     def transform(self, sp):
-        """銀河座標で担当原盤を選び、領域外の位置は除外します。"""
+        """銀河座標で担当原板を選び、領域外の位置は除外します。"""
         unit = self.assigned_unit(sp)
         if unit is None:
             return None
         return self.transform_unit(sp, *unit)
 
     def lens_distance(self, dir_, index):
-        """原盤 ``(出力位置, 番号)`` の原板とレンズの距離。"""
+        """原板 ``(出力位置, 番号)`` の原板とレンズの距離。"""
         return self._plate_geometry[dir_, index][1]
 
     def transform_unit(self, sp, dir_, index):
@@ -139,13 +139,13 @@ class GalaxyTransformer:
         return pp
 
     def inverse_transform_unit(self, xmm, ymm, dir_, index):
-        """原盤上の点から、レンズ中心を通る光線とドームの交点を求める。"""
+        """原板上の点から、レンズ中心を通る光線とドームの交点を求める。"""
         lens_center, lens, forward, east, north = self._plate_geometry[dir_, index]
         ray = (forward.plus(east.mult_scalar(-ymm / lens))
                .plus(north.mult_scalar(xmm / lens))).unit_vector()
         dot = lens_center.dot(ray)
         discriminant = dot * dot + self.sphere ** 2 - lens_center.dot(lens_center)
         if discriminant < 0:
-            raise ValueError("原盤の光線がドームと交差しません。")
+            raise ValueError("原板の光線がドームと交差しません。")
         distance = -dot + math.sqrt(discriminant)
         return SpherePosition.from_vector(lens_center.plus(ray.mult_scalar(distance)))

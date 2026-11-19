@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gingaforge"
 version = "0.1.0"
-description = "銀河投影機（ぎんとう）用の天の川原盤（OHPフィルム・Gaiaエッチング）生成ライブラリ"
+description = "銀河投影機（ぎんとう）用の天の川原板（OHPフィルム・Gaiaエッチング）生成ライブラリ"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-2.0-or-later"
