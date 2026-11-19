@@ -60,7 +60,7 @@ flowchart TD
 |---|---:|---:|
 | 描き方 `render` | holes（円形の穴） | gray（階調） |
 | 集計セル `cell-size-mm` | 0.4 mm | 0.056 mm |
-| 光量倍率 `flux-gain` | 0.05 | 0.4 |
+| 光量倍率 `flux-gain` | 0.05 | 0.7 |
 | 天の川強調 `milky-way` | no | yes |
 | 端のフェード `fade.width-deg` | なし | 15度 |
 | 原板の距離 `plate-distance` | 50 mm | 400 mm |

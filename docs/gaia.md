@@ -416,7 +416,7 @@ column.3.galaxy.ohp.raster-dpi = 600
 | `galaxy.etch.render` | holes | gray | `holes`: 円形の穴 / `gray`: 開口率の階調画像 / `dither`: 誤差拡散した点の画像（[描き方](#描き方render)） |
 | `galaxy.etch.raster-dpi` | （1200） | 1200 | `gray`・`dither` の画像の解像度（72〜2400）。プリンターの解像度か、その整数分の1 |
 | `galaxy.etch.cell-size-mm` | 0.4 | 0.056 | 光量を合計するセル幅。`holes` では穴径＋金属幅の整数倍に切り下げる。大きいほど暗黒帯などの細部が平滑化される |
-| `galaxy.etch.flux-gain` | 0.05 | 0.4 | 全領域共通の光量倍率（開口面積の合計に掛ける）。`holes` は1.0では密集部の穴容量を超えやすい |
+| `galaxy.etch.flux-gain` | 0.05 | 0.7 | 全領域共通の光量倍率（開口面積の合計に掛ける）。`holes` は1.0では密集部の穴容量を超えやすい |
 | `galaxy.etch.min-hole-diameter-mm` | 0.02 | 0.02 | `holes` の最小穴の直径。すべての穴にこの径を使う |
 | `galaxy.etch.min-web-mm` | 0.02 | 0.02 | `holes` の穴の縁と縁の間に残す最小幅 |
 | `galaxy.etch.seed` | 0 | 0 | `holes` のセル内の穴の選択を再現する乱数種 |
